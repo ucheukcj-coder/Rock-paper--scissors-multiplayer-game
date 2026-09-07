@@ -1,0 +1,190 @@
+body {
+    background-color: #101010;
+    color: #f2f2f2;
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-image: url('./assets/bg.svg');
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+}
+
+#container {
+    background-color: #2d2d2d;
+    border: 2px solid #555;
+    width: min(92%, 720px);
+    margin: 0 auto;
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 0 18px rgba(0, 0, 0, 0.4);
+    
+}
+
+h2 {
+    margin: 12px 0;
+}
+
+#computer-choice-header,
+#user-choice-header,
+#result-header {
+    display: flex;
+    align-items: center;
+}
+
+.icon,
+.choice-icon,
+.reset-icon {
+    display: inline-block;
+    font-size: 1.2rem;
+    margin-right: 0.5rem;
+}
+
+.computer-icon {
+    color: #7f95ff;
+}
+
+.user-icon {
+    color: #a3ff8d;
+}
+
+.choice-button,
+#reset-button {
+    background-color: #333;
+    color: #f7f7f7;
+    border: 1px solid #666;
+    border-radius: 10px;
+    padding: 10px 18px;
+    margin: 6px 4px;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.choice-button:hover,
+#reset-button:hover {
+    background-color: #444;
+}
+
+#reset-button {
+    width: 100%;
+    margin-top: 14px;
+}
+
+#score {
+    margin: 18px 0 8px;
+    font-weight: bold;
+}
+#name {
+    font-size: 1.2rem;
+    margin-bottom: 12px;
+    text-align: center;
+    
+}
+
+/* New game-touch styles */
+.choice-button.selected {
+    box-shadow: 0 0 12px rgba(163, 255, 141, 0.25);
+    transform: translateY(-4px);
+}
+.choice-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+}
+
+/* Make choice buttons more prominent */
+.choice-buttons .choice-button {
+    padding: 14px 20px;
+    font-size: 1.05rem;
+    min-width: 120px;
+    border-radius: 12px;
+    transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+.choice-buttons .choice-button:hover:not(:disabled) { transform: translateY(-4px); box-shadow: 0 8px 20px rgba(0,0,0,0.35) }
+
+/* Countdown progress bar (fallback styling) */
+.countdown-bar { height: 10px; background: rgba(255,255,255,0.06); border-radius: 8px; overflow: hidden }
+.countdown-fill { height: 100%; background: linear-gradient(90deg,#7f95ff,#a3ff8d); }
+
+/* Horizontal layout for the three choice buttons, responsive */
+.choice-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 12px 0;
+    flex-wrap: wrap;
+}
+
+#result-header.win {
+    color: #9fff97;
+    animation: pulse 700ms ease-in-out;
+}
+#result-header.lose {
+    color: #ff9898;
+    animation: pulse 700ms ease-in-out;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+    100% { transform: scale(1); }
+}
+
+/* small confetti using emojis (subtle) */
+.confetti {
+  font-size: 1.2rem;
+  display: inline-block;
+  margin-left: 8px;
+  animation: floatUp 1200ms ease-out;
+}
+
+/* Add subtle backdrop blur inside the container to separate content from background */
+#container {
+    backdrop-filter: blur(6px) saturate(1.05);
+    background-color: rgba(45,45,45,0.84);
+}
+
+@keyframes floatUp {
+  0% { transform: translateY(6px) rotate(0deg); opacity: 0 }
+  50% { opacity: 1 }
+  100% { transform: translateY(-10px) rotate(20deg); opacity: 0 }
+}
+
+/* Layout for choices: place computer and user on opposite sides */
+.choices-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 10px 0 18px;
+}
+.choices-row .side {
+    width: 35%;
+}
+.computer-side { text-align: left }
+.user-side { text-align: right }
+.choice-bubble {
+  display: inline-block;
+  margin-top: 8px;
+  background: rgba(255,255,255,0.04);
+  padding: 8px 12px;
+  border-radius: 12px;
+  min-width: 88px;
+}
+.result-center { width: 30%; text-align: center }
+
+/* Responsive adjustments for narrow screens */
+@media (max-width: 600px) {
+    #container { padding: 18px }
+    .choices-row { flex-direction: column; align-items: center }
+    .choices-row .side { width: 100%; text-align: center }
+    .result-center { width: 100%; margin: 12px 0 }
+    .choice-bubble { min-width: 64px }
+}
+
+/* smaller labels */
+.label { display: block; font-size: 0.85rem; opacity: 0.9 }
+
+/* small control styles */
+label[for="sound-toggle"], .choice-buttons + div label, .choice-buttons + label {
+    user-select: none;
+}
