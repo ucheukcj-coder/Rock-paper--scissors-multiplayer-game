@@ -28,6 +28,8 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          VITE_SOCKET_URL: ${{ vars.VITE_SOCKET_URL }}
         run: npm run build
 
       - name: Setup Pages
