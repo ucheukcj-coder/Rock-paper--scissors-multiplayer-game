@@ -26,12 +26,15 @@ function decide(user, comp) {
 export default function Game() {
   const socketRef = React.useRef(null)
   const roomIdRef = React.useRef('')
+  const playerNameRef = React.useRef(localStorage.getItem('playerName') || '')
   const [userChoice, setUserChoice] = useState('')
   const [computerChoice, setComputerChoice] = useState('')
   const [result, setResult] = useState('')
   const [userScore, setUserScore] = useState(0)
   const [computerScore, setComputerScore] = useState(0)
   const [gameOver, setGameOver] = useState(false)
+  const [rematchRequested, setRematchRequested] = useState(false)
+  const [opponentRematchRequested, setOpponentRematchRequested] = useState(false)
   const WIN_SCORE = 5
   const [inRoom, setInRoom] = useState(false)
   const [roomId, setRoomId] = useState('')
@@ -41,6 +44,7 @@ export default function Game() {
   const [opponentConnected, setOpponentConnected] = useState(false)
   const [waiting, setWaiting] = useState(false)
   const [roomPlayers, setRoomPlayers] = useState([])
+  const [roomPlayerNames, setRoomPlayerNames] = useState({})
   const [userMadeChoice, setUserMadeChoice] = useState(false)
   const [opponentMade, setOpponentMade] = useState(false)
   const [countdownMs, setCountdownMs] = useState(0)
@@ -62,7 +66,7 @@ export default function Game() {
       setPlayerId(s.id)
       // attempt to rejoin existing room after reconnect
       if (roomIdRef.current) {
-        s.emit('joinRoom', roomIdRef.current)
+        s.emit('joinRoom', { roomId: roomIdRef.current, name: playerNameRef.current })
       }
     })
     s.on('disconnect', () => setSocketConnected(false))
@@ -73,6 +77,7 @@ export default function Game() {
     s.on('roomUpdate', (room) => {
       console.log('roomUpdate received', room)
       setRoomPlayers(room.players || [])
+      setRoomPlayerNames(room.names || {})
       if (room.players && room.players.length === 2 && room.players.includes(s.id)) setOpponentConnected(true)
       else setOpponentConnected(false)
     })
@@ -131,6 +136,15 @@ export default function Game() {
         return next
       })
     })
+    s.on('rematchUpdate', (readyPlayers) => {
+      setRematchRequested(readyPlayers.includes(s.id))
+      setOpponentRematchRequested(readyPlayers.some(id => id !== s.id))
+    })
+    s.on('rematchStarted', () => {
+      handleReset()
+      setRematchRequested(false)
+      setOpponentRematchRequested(false)
+    })
 
     s.on('roomFull', () => {
       alert('Room is full — please try another room id')
@@ -155,9 +169,10 @@ export default function Game() {
     socketRef.current.emit('playerChoice', { roomId, choice })
   }
 
-  function handleJoin(room) {
+  function handleJoin(room, name) {
     if (!socketRef.current || !socketRef.current.connected) return
-    socketRef.current.emit('joinRoom', room)
+    playerNameRef.current = name
+    socketRef.current.emit('joinRoom', { roomId: room, name })
     setRoomId(room)
     roomIdRef.current = room
     setInRoom(true)
@@ -170,7 +185,15 @@ export default function Game() {
     roomIdRef.current = ''
     setOpponentConnected(false)
     setWaiting(false)
+    setRematchRequested(false)
+    setOpponentRematchRequested(false)
     handleReset()
+  }
+
+  function handleRematch() {
+    if (!gameOver || rematchRequested || !socketRef.current?.connected) return
+    setRematchRequested(true)
+    socketRef.current.emit('requestRematch', roomId)
   }
 
   async function handleCopyInvite() {
@@ -190,6 +213,8 @@ export default function Game() {
     setUserScore(0)
     setComputerScore(0)
     setGameOver(false)
+    setRematchRequested(false)
+    setOpponentRematchRequested(false)
     setWaiting(false)
     setUserMadeChoice(false)
     setOpponentMade(false)
@@ -246,7 +271,20 @@ export default function Game() {
             )}
           </div>
 
-          <ResultDisplay userChoice={userChoice} computerChoice={computerChoice} result={result} opponentMade={opponentMade} />
+          {gameOver && (
+            <div className="match-winner-banner" role="status">
+              <div className="winner-copy">
+                <span className="meta-label">Match winner</span>
+                <strong>{userScore >= WIN_SCORE ? playerNameRef.current : roomPlayerNames[roomPlayers.find(id => id !== socketRef.current?.id)] || 'Opponent'} wins</strong>
+                <span className="rematch-note">{rematchRequested ? 'Waiting for your opponent...' : opponentRematchRequested ? 'Your opponent is ready for a rematch.' : 'Play another match?'}</span>
+              </div>
+              <button className="button-primary" onClick={handleRematch} disabled={rematchRequested || !opponentConnected}>
+                {rematchRequested ? 'Waiting...' : 'Rematch'} <span aria-hidden="true">↻</span>
+              </button>
+            </div>
+          )}
+
+          <ResultDisplay userChoice={userChoice} computerChoice={computerChoice} result={result} opponentMade={opponentMade} opponentName={roomPlayerNames[roomPlayers.find(id => id !== socketRef.current?.id)] || 'Opponent'} playerName={playerNameRef.current || 'You'} />
 
           <div className="decision-row">
             <div>
@@ -258,7 +296,7 @@ export default function Game() {
 
           <footer className="match-footer">
             <div className="footer-actions">
-              <ResetButton onReset={handleReset} />
+              {!gameOver && <ResetButton onReset={handleReset} />}
               <label className="sound-toggle"><input type="checkbox" checked={soundOn} onChange={e => setSoundOn(e.target.checked)} /> Sound</label>
             </div>
             <div className="round-target">{gameOver ? 'MATCH COMPLETE' : 'FIRST TO 5 WINS'}</div>

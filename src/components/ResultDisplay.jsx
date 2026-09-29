@@ -2,7 +2,7 @@ import React from 'react'
 
 const choiceIcons = { Rock: '✊', Paper: '✋', Scissors: '✌' }
 
-export default function ResultDisplay({ userChoice, computerChoice, result, opponentMade }) {
+export default function ResultDisplay({ userChoice, computerChoice, result, opponentMade, opponentName, playerName }) {
   const resultClass = result === 'You Win' ? 'win' : result === 'You Lose' ? 'lose' : result === 'Draw' ? 'draw' : ''
 
   return (
@@ -10,7 +10,7 @@ export default function ResultDisplay({ userChoice, computerChoice, result, oppo
       <div className="player-panel opponent-panel">
         <div className="player-heading">
           <span className="player-icon" aria-hidden="true">♟</span>
-          <div><h2 className="player-name">Opponent</h2><div className="player-caption">Guest player</div></div>
+          <div><h2 className="player-name">{opponentName}</h2><div className="player-caption">Guest player</div></div>
         </div>
         <div className={'choice-display' + (computerChoice ? '' : ' is-empty')} aria-live="polite">
           {computerChoice ? choiceIcons[computerChoice] : 'READY'}
@@ -27,7 +27,7 @@ export default function ResultDisplay({ userChoice, computerChoice, result, oppo
       <div className="player-panel user-panel">
         <div className="player-heading">
           <span className="player-icon" aria-hidden="true">●</span>
-          <div><h2 className="player-name">You</h2><div className="player-caption">Your side</div></div>
+          <div><h2 className="player-name">{playerName}</h2><div className="player-caption">Your side</div></div>
         </div>
         <div className={'choice-display' + (userChoice ? '' : ' is-empty')} aria-live="polite">
           {userChoice ? choiceIcons[userChoice] : 'READY'}

@@ -15,12 +15,17 @@ io.on('connection', (socket) => {
   console.log('conn', socket.id)
 
   socket.on('joinRoom', (roomId) => {
-    console.log('joinRoom request', socket.id, roomId)
-    if (typeof roomId !== 'string' || !roomId.trim()) return
-    let room = rooms.get(roomId) || { players: [] }
+    const roomName = typeof roomId === 'string' ? roomId : roomId?.roomId
+    const playerName = typeof roomId === 'string' ? '' : String(roomId?.name || '').trim().slice(0, 20)
+    console.log('joinRoom request', socket.id, roomName)
+    if (typeof roomName !== 'string' || !roomName.trim()) return
+    let room = rooms.get(roomName) || { players: [], names: {}, rematchReady: [] }
+    room.names = room.names || {}
+    room.rematchReady = room.rematchReady || []
     if (room.players.includes(socket.id)) {
-      socket.join(roomId)
-      socket.emit('roomUpdate', room)
+      if (playerName) room.names[socket.id] = playerName
+      socket.join(roomName)
+      socket.emit('roomUpdate', { players: room.players, names: room.names })
       return
     }
     if (room.players.length >= 2) {
@@ -28,10 +33,11 @@ io.on('connection', (socket) => {
       return
     }
     room.players.push(socket.id)
-    rooms.set(roomId, room)
-    socket.join(roomId)
-    console.log('room updated', roomId, room)
-    io.to(roomId).emit('roomUpdate', room)
+    if (playerName) room.names[socket.id] = playerName
+    rooms.set(roomName, room)
+    socket.join(roomName)
+    console.log('room updated', roomName, room)
+    io.to(roomName).emit('roomUpdate', { players: room.players, names: room.names })
   })
 
   socket.on('playerChoice', ({ roomId, choice }) => {
@@ -82,15 +88,35 @@ io.on('connection', (socket) => {
     }
   })
 
+  socket.on('requestRematch', (roomId) => {
+    const room = rooms.get(roomId)
+    if (!room || room.players.length !== 2 || !room.players.includes(socket.id)) return
+    room.rematchReady = room.rematchReady || []
+    if (!room.rematchReady.includes(socket.id)) room.rematchReady.push(socket.id)
+    io.to(roomId).emit('rematchUpdate', room.rematchReady)
+    if (room.rematchReady.length === 2) {
+      room.rematchReady = []
+      room.choices = {}
+      if (room.timeoutId) {
+        clearTimeout(room.timeoutId)
+        room.timeoutId = null
+      }
+      io.to(roomId).emit('rematchStarted')
+    }
+  })
+
   socket.on('leaveRoom', (roomId) => {
     console.log('leaveRoom', socket.id, roomId)
     socket.leave(roomId)
     const room = rooms.get(roomId)
     if (room) {
       room.players = room.players.filter(id => id !== socket.id)
+      if (room.names) delete room.names[socket.id]
+      room.rematchReady = (room.rematchReady || []).filter(id => id !== socket.id)
       rooms.set(roomId, room)
       console.log('room updated', roomId, room)
-      io.to(roomId).emit('roomUpdate', room)
+      io.to(roomId).emit('roomUpdate', { players: room.players, names: room.names || {} })
+      io.to(roomId).emit('rematchUpdate', room.rematchReady)
     }
   })
 
@@ -99,9 +125,12 @@ io.on('connection', (socket) => {
     for (const [roomId, room] of rooms.entries()) {
       if (room.players.includes(socket.id)) {
         room.players = room.players.filter(id => id !== socket.id)
+        if (room.names) delete room.names[socket.id]
+        room.rematchReady = (room.rematchReady || []).filter(id => id !== socket.id)
         rooms.set(roomId, room)
         console.log('room updated after disconnect', roomId, room)
-        io.to(roomId).emit('roomUpdate', room)
+        io.to(roomId).emit('roomUpdate', { players: room.players, names: room.names || {} })
+        io.to(roomId).emit('rematchUpdate', room.rematchReady)
       }
     }
   })

@@ -127,6 +127,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid #367f73; outline-
   box-shadow: 7px 7px 0 rgba(23, 25, 22, .1);
 }
 .lobby-form label { display: block; margin-bottom: 9px; font-size: 13px; font-weight: 600; }
+.lobby-form .name-input { margin-bottom: 18px; }
 .lobby-fields { display: flex; gap: 8px; }
 .lobby-input {
   width: 100%;
@@ -254,6 +255,22 @@ button:focus-visible, input:focus-visible { outline: 3px solid #367f73; outline-
 .sound-toggle { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; cursor: pointer; }
 .sound-toggle input { width: 15px; height: 15px; accent-color: var(--teal); }
 .round-target { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; }
+.match-winner-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 16px 0 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  background: var(--lime);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+.winner-copy { display: grid; gap: 3px; }
+.winner-copy strong { font-size: 18px; }
+.rematch-note { color: #55594a; font-size: 12px; }
+.match-winner-banner .button-primary { border-color: var(--ink); background: var(--ink); }
 
 @keyframes enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes pop { 0% { transform: scale(.94); } 65% { transform: scale(1.05); } 100% { transform: scale(1); } }
@@ -306,6 +323,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid #367f73; outline-
   .match-footer { align-items: flex-start; gap: 8px; padding-top: 10px; }
   .footer-actions { gap: 4px; }
   .button-quiet { padding: 0 8px; }
+  .match-winner-banner { align-items: flex-start; flex-direction: column; }
+  .match-winner-banner .button-primary { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
