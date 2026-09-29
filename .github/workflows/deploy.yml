@@ -29,7 +29,7 @@ jobs:
 
       - name: Validate socket server URL
         env:
-          VITE_SOCKET_URL: ${{ vars.VITE_SOCKET_URL }}
+          VITE_SOCKET_URL: ${{ vars.VITE_SOCKET_URL || 'https://multiplayer-clone-socket.onrender.com' }}
         run: |
           case "$VITE_SOCKET_URL" in
             https://*) ;;
@@ -38,7 +38,7 @@ jobs:
 
       - name: Build
         env:
-          VITE_SOCKET_URL: ${{ vars.VITE_SOCKET_URL }}
+          VITE_SOCKET_URL: ${{ vars.VITE_SOCKET_URL || 'https://multiplayer-clone-socket.onrender.com' }}
         run: npm run build
 
       - name: Setup Pages
