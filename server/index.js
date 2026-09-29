@@ -5,6 +5,7 @@ import { Server } from 'socket.io'
 const app = express()
 const server = http.createServer(app)
 const io = new Server(server, { cors: { origin: '*' } })
+app.get('/healthz', (_req, res) => res.status(200).send('ok'))
 
 // Simple room pairing: two players per room
 // rooms map will store { players: [], choices: {}, timeoutId: null }
@@ -15,7 +16,13 @@ io.on('connection', (socket) => {
 
   socket.on('joinRoom', (roomId) => {
     console.log('joinRoom request', socket.id, roomId)
+    if (typeof roomId !== 'string' || !roomId.trim()) return
     let room = rooms.get(roomId) || { players: [] }
+    if (room.players.includes(socket.id)) {
+      socket.join(roomId)
+      socket.emit('roomUpdate', room)
+      return
+    }
     if (room.players.length >= 2) {
       socket.emit('roomFull')
       return

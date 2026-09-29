@@ -36,6 +36,8 @@ export default function Game() {
   const [inRoom, setInRoom] = useState(false)
   const [roomId, setRoomId] = useState('')
   const [playerId, setPlayerId] = useState('')
+  const [socketConnected, setSocketConnected] = useState(false)
+  const [inviteCopied, setInviteCopied] = useState(false)
   const [opponentConnected, setOpponentConnected] = useState(false)
   const [waiting, setWaiting] = useState(false)
   const [roomPlayers, setRoomPlayers] = useState([])
@@ -48,15 +50,25 @@ export default function Game() {
 
   useEffect(() => {
     // initialize socket once
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000'
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || (import.meta.env.DEV ? 'http://localhost:3000' : '')
+    if (!socketUrl) {
+      console.error('VITE_SOCKET_URL is not configured for this deployment')
+      return
+    }
     socketRef.current = io(socketUrl)
     const s = socketRef.current
     s.on('connect', () => {
+      setSocketConnected(true)
       setPlayerId(s.id)
       // attempt to rejoin existing room after reconnect
       if (roomIdRef.current) {
         s.emit('joinRoom', roomIdRef.current)
       }
+    })
+    s.on('disconnect', () => setSocketConnected(false))
+    s.on('connect_error', (error) => {
+      setSocketConnected(false)
+      console.error('Socket connection failed:', error.message)
     })
     s.on('roomUpdate', (room) => {
       console.log('roomUpdate received', room)
@@ -144,7 +156,7 @@ export default function Game() {
   }
 
   function handleJoin(room) {
-    if (!socketRef.current) return
+    if (!socketRef.current || !socketRef.current.connected) return
     socketRef.current.emit('joinRoom', room)
     setRoomId(room)
     roomIdRef.current = room
@@ -159,6 +171,16 @@ export default function Game() {
     setOpponentConnected(false)
     setWaiting(false)
     handleReset()
+  }
+
+  async function handleCopyInvite() {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setInviteCopied(true)
+      setTimeout(() => setInviteCopied(false), 2000)
+    } catch (error) {
+      console.error('Could not copy invite link:', error)
+    }
   }
 
   function handleReset() {
@@ -177,13 +199,15 @@ export default function Game() {
   return (
     <div id="container">
       <Header />
+      {!socketConnected && <div role="status">{import.meta.env.PROD && !import.meta.env.VITE_SOCKET_URL ? 'Multiplayer server URL is not configured.' : 'Connecting to multiplayer server...'}</div>}
       {!inRoom ? (
         <Lobby onJoin={handleJoin} />
       ) : (
         <div>
           <div style={{ marginBottom: 8 }}>
             <strong>Room:</strong> {roomId} — {opponentConnected ? 'Opponent connected' : 'Waiting for opponent...'} {waiting && '(waiting for reveal)'}
-            <button onClick={handleLeave} style={{ marginLeft: 12, padding: '4px 8px', borderRadius: 6 }}>Leave Room</button>
+            <button onClick={handleCopyInvite} style={{ marginLeft: 12, padding: '4px 8px', borderRadius: 6 }}>{inviteCopied ? 'Invite copied' : 'Copy invite link'}</button>
+            <button onClick={handleLeave} style={{ marginLeft: 8, padding: '4px 8px', borderRadius: 6 }}>Leave Room</button>
           </div>
           <div style={{ fontSize: 12, opacity: 0.9, marginBottom: 8 }}>
             <strong>Players in room:</strong> {roomPlayers.join(', ') || '(none)'}

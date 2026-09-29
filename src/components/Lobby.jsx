@@ -1,12 +1,16 @@
 import React, { useState } from 'react'
 
 export default function Lobby({ onJoin }) {
-  const [roomId, setRoomId] = useState(() => Math.random().toString(36).slice(2, 8))
+  const [roomId, setRoomId] = useState(() => new URLSearchParams(window.location.search).get('room') || Math.random().toString(36).slice(2, 8))
 
   function handleSubmit(e) {
     e.preventDefault()
-    if (!roomId) return
-    onJoin(roomId)
+    const normalizedRoomId = roomId.trim()
+    if (!normalizedRoomId) return
+    const inviteUrl = new URL(window.location.href)
+    inviteUrl.searchParams.set('room', normalizedRoomId)
+    window.history.replaceState({}, '', inviteUrl)
+    onJoin(normalizedRoomId)
   }
 
   return (

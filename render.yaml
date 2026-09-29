@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: multiplayer-clone-socket
+    runtime: node
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /healthz
+    plan: free

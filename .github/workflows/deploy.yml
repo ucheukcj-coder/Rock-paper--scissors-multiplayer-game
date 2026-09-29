@@ -27,6 +27,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Validate socket server URL
+        env:
+          VITE_SOCKET_URL: ${{ vars.VITE_SOCKET_URL }}
+        run: |
+          case "$VITE_SOCKET_URL" in
+            https://*) ;;
+            *) echo "::error::Set the VITE_SOCKET_URL Actions variable to your public HTTPS Socket.IO server URL."; exit 1 ;;
+          esac
+
       - name: Build
         env:
           VITE_SOCKET_URL: ${{ vars.VITE_SOCKET_URL }}

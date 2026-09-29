@@ -1,31 +1,18 @@
 # multiplayer-clone
 
-This is a copy of the Rock Paper Scissors demo with a minimal Socket.io server scaffold.
+Rock Paper Scissors multiplayer game using React, Socket.IO, and GitHub Pages.
 
-Quick start:
+## Deploy multiplayer
 
-1. Install client deps:
+GitHub Pages hosts only the frontend. Deploy the Socket.IO server separately:
 
-```bash
-cd multiplayer-clone
-npm install
-```
+1. In Render, create a Blueprint instance from this repository. Render reads `render.yaml` and deploys the service in `server/`.
+2. Copy the deployed service URL, such as `https://multiplayer-clone-socket.onrender.com`.
+3. In the GitHub repository, open **Settings > Secrets and variables > Actions > Variables**, create a repository variable named `VITE_SOCKET_URL`, and set its value to that URL. Do not include a trailing slash.
+4. Rerun the **Deploy React app to GitHub Pages** workflow (or push a commit) so the URL is embedded in the frontend build.
 
-2. Install server deps and start server:
+The deployment workflow fails if `VITE_SOCKET_URL` is missing or is not HTTPS. Render's free service may take a short time to wake after inactivity; the first connection can be delayed.
 
-```bash
-cd server
-npm install
-node index.js
-```
+## Run locally
 
-3. Start the client dev server:
-
-```bash
-cd ..
-npm run dev
-```
-
-Notes:
-- The server is a minimal example for pairing two players into a room. It emits `choicesRevealed` when both players have submitted choices.
-- You'll need to integrate the client `socket` events into the UI to enable real multiplayer flows. The client already includes `socket.io-client` in `package.json` and a basic import in `Game.jsx`.
+Install the frontend dependencies with `npm install`. In one terminal, start the Socket.IO service with `cd server`, `npm install`, then `npm start`. In another terminal, run `npm run dev` from the repository root. During development the client connects to `http://localhost:3000` by default; set `VITE_SOCKET_URL` to override it.
