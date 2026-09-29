@@ -197,43 +197,74 @@ export default function Game() {
   }
 
   return (
-    <div id="container">
-      <Header />
-      {!socketConnected && <div role="status">{import.meta.env.PROD && !import.meta.env.VITE_SOCKET_URL ? 'Multiplayer server URL is not configured.' : 'Connecting to multiplayer server...'}</div>}
+    <main className="app-shell">
+      <header className="app-header">
+        <Header />
+        <div className={'connection-state' + (socketConnected ? ' is-online' : ' is-offline')} role="status">
+          <span className="state-dot" />{socketConnected ? 'Server online' : 'Connecting'}
+        </div>
+      </header>
+      {!socketConnected && import.meta.env.PROD && !import.meta.env.VITE_SOCKET_URL && (
+        <div className="notice" role="alert">Multiplayer server URL is not configured for this deployment.</div>
+      )}
       {!inRoom ? (
-        <Lobby onJoin={handleJoin} />
+        <section className="lobby-stage">
+          <div className="lobby-copy">
+            <div className="eyebrow">Two players. One room. No takesies-backsies.</div>
+            <h2 className="lobby-title">Make your<br /><span>move.</span></h2>
+            <p className="lobby-subtitle">A quick head-to-head. Pick your room, bring a rival, and see who reads the game better.</p>
+            <div className="lobby-art" aria-hidden="true">✊</div>
+          </div>
+          <Lobby onJoin={handleJoin} />
+        </section>
       ) : (
-        <div>
-          <div style={{ marginBottom: 8 }}>
-            <strong>Room:</strong> {roomId} — {opponentConnected ? 'Opponent connected' : 'Waiting for opponent...'} {waiting && '(waiting for reveal)'}
-            <button onClick={handleCopyInvite} style={{ marginLeft: 12, padding: '4px 8px', borderRadius: 6 }}>{inviteCopied ? 'Invite copied' : 'Copy invite link'}</button>
-            <button onClick={handleLeave} style={{ marginLeft: 8, padding: '4px 8px', borderRadius: 6 }}>Leave Room</button>
+        <section className="match-view">
+          <div className="match-toolbar">
+            <div className="room-block">
+              <div className="room-token"><span className="meta-label">Room</span><span className="room-code">{roomId}</span></div>
+              <div className={'match-state' + (opponentConnected ? ' is-online' : '')}>
+                <span className="state-dot" />{opponentConnected ? 'Opponent connected' : 'Waiting for opponent'}
+              </div>
+              <div className="players-online">{roomPlayers.length}/2</div>
+            </div>
+            <div className="toolbar-actions">
+              <button className="button-secondary" onClick={handleCopyInvite}>{inviteCopied ? 'Copied' : 'Copy invite link'} <span aria-hidden="true">↗</span></button>
+              <button className="button-quiet" onClick={handleLeave}>Leave room</button>
+            </div>
           </div>
-          <div style={{ fontSize: 12, opacity: 0.9, marginBottom: 8 }}>
-            <strong>Players in room:</strong> {roomPlayers.join(', ') || '(none)'}
-          </div>
-          <div style={{ marginBottom: 8 }}>
+
+          <div className="round-strip">
+            <div className="round-note">
+              <span className="state-dot" />
+              <span>{waiting ? <><strong>Round resolving</strong> · waiting for reveal</> : userMadeChoice ? <><strong>Move locked</strong> · waiting on opponent</> : opponentConnected ? <><strong>Both players ready</strong> · choose your move</> : <>Share the invite to bring your opponent in</>}</span>
+            </div>
             {countdownLeft > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ width: 200, height: 10, background: 'rgba(255,255,255,0.08)', borderRadius: 6, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', background: 'linear-gradient(90deg,#7f95ff,#a3ff8d)', width: `${Math.round((countdownLeft / countdownMs) * 100)}%` }} />
-                </div>
-                <div style={{ fontSize: 13 }}>{Math.ceil(countdownLeft / 1000)}s</div>
+              <div className="countdown">
+                <div className="countdown-track"><div className="countdown-fill" style={{ width: `${Math.round((countdownLeft / countdownMs) * 100)}%` }} /></div>
+                <span>{Math.ceil(countdownLeft / 1000)}s</span>
               </div>
             )}
-            {opponentMade && <div style={{ fontSize: 13, color: '#ccc', marginTop: 6 }}>Opponent has made a choice</div>}
           </div>
-          <ResultDisplay userChoice={userChoice} computerChoice={computerChoice} result={result} userScore={userScore} computerScore={computerScore} gameOver={gameOver} />
-          <ChoiceButtons onChoose={handleChoose} disabled={!opponentConnected || userMadeChoice || gameOver} userChoice={userChoice} />
-          <ScoreBoard userScore={userScore} computerScore={computerScore} />
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8 }}>
-            <ResetButton onReset={handleReset} />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
-              <input type="checkbox" checked={soundOn} onChange={e => setSoundOn(e.target.checked)} /> Sound
-            </label>
+
+          <ResultDisplay userChoice={userChoice} computerChoice={computerChoice} result={result} opponentMade={opponentMade} />
+
+          <div className="decision-row">
+            <div>
+              <h2 className="decision-title">Choose your move</h2>
+              <ChoiceButtons onChoose={handleChoose} disabled={!opponentConnected || userMadeChoice || gameOver} userChoice={userChoice} />
+            </div>
+            <ScoreBoard userScore={userScore} computerScore={computerScore} />
           </div>
-        </div>
+
+          <footer className="match-footer">
+            <div className="footer-actions">
+              <ResetButton onReset={handleReset} />
+              <label className="sound-toggle"><input type="checkbox" checked={soundOn} onChange={e => setSoundOn(e.target.checked)} /> Sound</label>
+            </div>
+            <div className="round-target">{gameOver ? 'MATCH COMPLETE' : 'FIRST TO 5 WINS'}</div>
+          </footer>
+        </section>
       )}
-    </div>
+    </main>
   )
 }

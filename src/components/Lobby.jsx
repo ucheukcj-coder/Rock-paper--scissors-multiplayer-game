@@ -14,10 +14,13 @@ export default function Lobby({ onJoin }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ marginBottom: 12 }}>
-      <label style={{ display: 'block', marginBottom: 6 }}>Room ID</label>
-      <input value={roomId} onChange={e => setRoomId(e.target.value)} style={{ padding: 6, borderRadius: 6, border: '1px solid #666', marginRight: 8 }} />
-      <button type="submit" style={{ padding: '6px 10px', borderRadius: 6 }}>Join Room</button>
+    <form className="lobby-form" onSubmit={handleSubmit}>
+      <label htmlFor="room-id">Room code</label>
+      <div className="lobby-fields">
+        <input id="room-id" className="lobby-input" value={roomId} onChange={e => setRoomId(e.target.value)} maxLength={32} />
+        <button className="button-primary" type="submit">Enter arena <span aria-hidden="true">↗</span></button>
+      </div>
+      <p className="lobby-form-note">Joining a shared room code pairs you with your opponent.</p>
     </form>
   )
 }
