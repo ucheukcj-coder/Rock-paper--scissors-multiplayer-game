@@ -5,10 +5,12 @@ import ResultDisplay from './ResultDisplay'
 import ScoreBoard from './ScoreBoard'
 import ResetButton from './ResetButton'
 import Lobby from './Lobby'
+import RoundHistory from './RoundHistory'
 import io from 'socket.io-client'
 import { playClick, playWin, playLose, playDraw, playNotif, resumeAudio } from '../sounds'
 
 const CHOICES = ['Rock', 'Paper', 'Scissors']
+const QUICK_REACTIONS = ['👏', '😮', '😂', '👀']
 
 function decide(user, comp) {
   if (!user) return ''
@@ -26,30 +28,36 @@ function decide(user, comp) {
 export default function Game() {
   const socketRef = React.useRef(null)
   const roomIdRef = React.useRef('')
+  const opponentSeenRef = React.useRef(false)
   const playerNameRef = React.useRef(localStorage.getItem('playerName') || '')
   const [userChoice, setUserChoice] = useState('')
   const [computerChoice, setComputerChoice] = useState('')
   const [result, setResult] = useState('')
   const [userScore, setUserScore] = useState(0)
   const [computerScore, setComputerScore] = useState(0)
+  const [roundHistory, setRoundHistory] = useState([])
   const [gameOver, setGameOver] = useState(false)
   const [rematchRequested, setRematchRequested] = useState(false)
   const [opponentRematchRequested, setOpponentRematchRequested] = useState(false)
   const WIN_SCORE = 5
   const [inRoom, setInRoom] = useState(false)
+  const [computerMode, setComputerMode] = useState(false)
   const [roomId, setRoomId] = useState('')
   const [playerId, setPlayerId] = useState('')
   const [socketConnected, setSocketConnected] = useState(false)
   const [inviteCopied, setInviteCopied] = useState(false)
   const [opponentConnected, setOpponentConnected] = useState(false)
+  const [opponentDisconnected, setOpponentDisconnected] = useState(false)
   const [waiting, setWaiting] = useState(false)
   const [roomPlayers, setRoomPlayers] = useState([])
   const [roomPlayerNames, setRoomPlayerNames] = useState({})
   const [userMadeChoice, setUserMadeChoice] = useState(false)
   const [opponentMade, setOpponentMade] = useState(false)
+  const [opponentReaction, setOpponentReaction] = useState(null)
   const [countdownMs, setCountdownMs] = useState(0)
   const [countdownLeft, setCountdownLeft] = useState(0)
   const countdownRef = React.useRef(null)
+  const reactionTimeoutRef = React.useRef(null)
   const [soundOn, setSoundOn] = useState(true)
 
   useEffect(() => {
@@ -69,7 +77,12 @@ export default function Game() {
         s.emit('joinRoom', { roomId: roomIdRef.current, name: playerNameRef.current })
       }
     })
-    s.on('disconnect', () => setSocketConnected(false))
+    s.on('disconnect', () => {
+      setSocketConnected(false)
+      setOpponentConnected(false)
+      setWaiting(false)
+      setUserMadeChoice(false)
+    })
     s.on('connect_error', (error) => {
       setSocketConnected(false)
       console.error('Socket connection failed:', error.message)
@@ -78,11 +91,25 @@ export default function Game() {
       console.log('roomUpdate received', room)
       setRoomPlayers(room.players || [])
       setRoomPlayerNames(room.names || {})
-      if (room.players && room.players.length === 2 && room.players.includes(s.id)) setOpponentConnected(true)
-      else setOpponentConnected(false)
+      const connectedToRoom = room.players?.length === 2 && room.players.includes(s.id)
+      setOpponentConnected(Boolean(connectedToRoom))
+      if (connectedToRoom) {
+        opponentSeenRef.current = true
+        setOpponentDisconnected(false)
+      } else if (room.players?.length === 1 && opponentSeenRef.current) {
+        setOpponentDisconnected(true)
+      }
     })
     s.on('opponentMadeChoice', (id) => {
       if (id !== s.id) setOpponentMade(true)
+    })
+    s.on('opponentReaction', (reaction) => {
+      setOpponentReaction(reaction)
+      if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current)
+      reactionTimeoutRef.current = setTimeout(() => {
+        setOpponentReaction(null)
+        reactionTimeoutRef.current = null
+      }, 2200)
     })
 
     s.on('startCountdown', ({ by, duration }) => {
@@ -117,24 +144,16 @@ export default function Game() {
       const otherChoice = otherId ? choices[otherId] : ''
       setUserChoice(meChoice || '')
       setComputerChoice(otherChoice || '')
-      const res = decide(meChoice, otherChoice)
-      setResult(res)
-      // play appropriate sound
-      if (soundOn) {
-        if (res === 'You Win') playWin()
-        else if (res === 'You Lose') playLose()
-        else if (res === 'Draw') playDraw()
-      }
-      if (res === 'You Win') setUserScore(sco => {
-        const next = sco + 1
-        if (next >= WIN_SCORE) setGameOver(true)
-        return next
-      })
-      else if (res === 'You Lose') setComputerScore(sco => {
-        const next = sco + 1
-        if (next >= WIN_SCORE) setGameOver(true)
-        return next
-      })
+      recordResult(meChoice, otherChoice)
+    })
+    s.on('roundCancelled', () => {
+      setWaiting(false)
+      setUserMadeChoice(false)
+      setOpponentMade(false)
+      setUserChoice('')
+      setComputerChoice('')
+      setCountdownLeft(0)
+      if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
     })
     s.on('rematchUpdate', (readyPlayers) => {
       setRematchRequested(readyPlayers.includes(s.id))
@@ -153,6 +172,7 @@ export default function Game() {
     return () => {
       if (socketRef.current) socketRef.current.disconnect()
       if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+      if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current)
     }
   }, [])
 
@@ -166,16 +186,67 @@ export default function Game() {
       resumeAudio().catch(() => {})
       playClick()
     }
+    if (computerMode) {
+      const opponentChoice = CHOICES[Math.floor(Math.random() * CHOICES.length)]
+      setComputerChoice(opponentChoice)
+      recordResult(choice, opponentChoice)
+      setUserMadeChoice(false)
+      return
+    }
     socketRef.current.emit('playerChoice', { roomId, choice })
+  }
+
+  function handleQuickReaction(reaction) {
+    if (!roomId || computerMode || !opponentConnected || !socketRef.current?.connected) return
+    socketRef.current.emit('quickReaction', { roomId, reaction })
+  }
+
+  function recordResult(meChoice, opponentChoice) {
+    const roundResult = decide(meChoice, opponentChoice)
+    setResult(roundResult)
+    setRoundHistory(history => [...history, {
+      round: history.length + 1,
+      playerChoice: meChoice,
+      opponentChoice,
+      result: roundResult,
+    }])
+    if (soundOn) {
+      if (roundResult === 'You Win') playWin()
+      else if (roundResult === 'You Lose') playLose()
+      else if (roundResult === 'Draw') playDraw()
+    }
+    if (roundResult === 'You Win') setUserScore(score => {
+      const next = score + 1
+      if (next >= WIN_SCORE) setGameOver(true)
+      return next
+    })
+    else if (roundResult === 'You Lose') setComputerScore(score => {
+      const next = score + 1
+      if (next >= WIN_SCORE) setGameOver(true)
+      return next
+    })
   }
 
   function handleJoin(room, name) {
     if (!socketRef.current || !socketRef.current.connected) return
+    setComputerMode(false)
     playerNameRef.current = name
     socketRef.current.emit('joinRoom', { roomId: room, name })
     setRoomId(room)
     roomIdRef.current = room
+    opponentSeenRef.current = false
+    setOpponentDisconnected(false)
     setInRoom(true)
+  }
+
+  function handlePlayComputer(name) {
+    playerNameRef.current = name
+    if (name !== 'You') localStorage.setItem('playerName', name)
+    setComputerMode(true)
+    setRoomId('COMPUTER')
+    setOpponentConnected(true)
+    setInRoom(true)
+    handleReset()
   }
 
   function handleLeave() {
@@ -183,6 +254,9 @@ export default function Game() {
     setInRoom(false)
     setRoomId('')
     roomIdRef.current = ''
+    opponentSeenRef.current = false
+    setOpponentDisconnected(false)
+    setComputerMode(false)
     setOpponentConnected(false)
     setWaiting(false)
     setRematchRequested(false)
@@ -212,6 +286,7 @@ export default function Game() {
     setResult('')
     setUserScore(0)
     setComputerScore(0)
+    setRoundHistory([])
     setGameOver(false)
     setRematchRequested(false)
     setOpponentRematchRequested(false)
@@ -240,28 +315,39 @@ export default function Game() {
             <p className="lobby-subtitle">A quick head-to-head. Pick your room, bring a rival, and see who reads the game better.</p>
             <div className="lobby-art" aria-hidden="true">✊</div>
           </div>
-          <Lobby onJoin={handleJoin} />
+          <Lobby onJoin={handleJoin} onPlayComputer={handlePlayComputer} />
         </section>
       ) : (
         <section className="match-view">
           <div className="match-toolbar">
             <div className="room-block">
-              <div className="room-token"><span className="meta-label">Room</span><span className="room-code">{roomId}</span></div>
+              <div className="room-token"><span className="meta-label">{computerMode ? 'Mode' : 'Room'}</span><span className="room-code">{roomId}</span></div>
               <div className={'match-state' + (opponentConnected ? ' is-online' : '')}>
-                <span className="state-dot" />{opponentConnected ? 'Opponent connected' : 'Waiting for opponent'}
+                <span className="state-dot" />{computerMode ? 'Computer ready' : opponentConnected ? 'Opponent connected' : 'Waiting for opponent'}
               </div>
-              <div className="players-online">{roomPlayers.length}/2</div>
+              <div className="players-online">{computerMode ? '1P' : `${roomPlayers.length}/2`}</div>
             </div>
             <div className="toolbar-actions">
-              <button className="button-secondary" onClick={handleCopyInvite}>{inviteCopied ? 'Copied' : 'Copy invite link'} <span aria-hidden="true">↗</span></button>
+              {!computerMode && <button className="button-secondary" onClick={handleCopyInvite}>{inviteCopied ? 'Copied' : 'Copy invite link'} <span aria-hidden="true">↗</span></button>}
               <button className="button-quiet" onClick={handleLeave}>Leave room</button>
             </div>
           </div>
 
+          {!computerMode && !socketConnected && (
+            <div className="notice reconnect-notice" role="status">
+              Connection lost. Reconnecting to room {roomId}… Keep this page open.
+            </div>
+          )}
+          {!computerMode && socketConnected && opponentDisconnected && (
+            <div className="notice reconnect-notice" role="status">
+              Your opponent disconnected. Waiting for them to reconnect to room {roomId}.
+            </div>
+          )}
+
           <div className="round-strip">
             <div className="round-note">
               <span className="state-dot" />
-              <span>{waiting ? <><strong>Round resolving</strong> · waiting for reveal</> : userMadeChoice ? <><strong>Move locked</strong> · waiting on opponent</> : opponentConnected ? <><strong>Both players ready</strong> · choose your move</> : <>Share the invite to bring your opponent in</>}</span>
+              <span>{computerMode ? <><strong>Computer ready</strong> · choose your move</> : waiting ? <><strong>Round resolving</strong> · waiting for reveal</> : userMadeChoice ? <><strong>Move locked</strong> · waiting on opponent</> : opponentConnected ? <><strong>Both players ready</strong> · choose your move</> : opponentDisconnected ? <>Waiting for your opponent to reconnect</> : <>Share the invite to bring your opponent in</>}</span>
             </div>
             {countdownLeft > 0 && (
               <div className="countdown">
@@ -270,6 +356,24 @@ export default function Game() {
               </div>
             )}
           </div>
+
+          {!computerMode && opponentConnected && (
+            <div className="quick-reaction-row">
+              <span>React</span>
+              <div className="quick-reaction-buttons" role="group" aria-label="Send a quick reaction">
+                {QUICK_REACTIONS.map(reaction => (
+                  <button key={reaction} className="quick-reaction-button" type="button" onClick={() => handleQuickReaction(reaction)} aria-label={`Send ${reaction} reaction`}>
+                    {reaction}
+                  </button>
+                ))}
+              </div>
+              {opponentReaction && (
+                <span className="incoming-reaction" role="status">
+                  {opponentReaction.name}: {opponentReaction.reaction}
+                </span>
+              )}
+            </div>
+          )}
 
           {gameOver && (
             <div className="match-winner-banner" role="status">
@@ -284,15 +388,17 @@ export default function Game() {
             </div>
           )}
 
-          <ResultDisplay userChoice={userChoice} computerChoice={computerChoice} result={result} opponentMade={opponentMade} opponentName={roomPlayerNames[roomPlayers.find(id => id !== socketRef.current?.id)] || 'Opponent'} playerName={playerNameRef.current || 'You'} />
+          <ResultDisplay userChoice={userChoice} computerChoice={computerChoice} result={result} opponentMade={opponentMade} opponentName={computerMode ? 'Computer' : roomPlayerNames[roomPlayers.find(id => id !== socketRef.current?.id)] || 'Opponent'} opponentCaption={computerMode ? 'CPU opponent' : 'Guest player'} playerName={playerNameRef.current || 'You'} />
 
           <div className="decision-row">
             <div>
               <h2 className="decision-title">Choose your move</h2>
-              <ChoiceButtons onChoose={handleChoose} disabled={!opponentConnected || userMadeChoice || gameOver} userChoice={userChoice} />
+              <ChoiceButtons onChoose={handleChoose} disabled={(!computerMode && !opponentConnected) || userMadeChoice || gameOver} userChoice={userChoice} />
             </div>
             <ScoreBoard userScore={userScore} computerScore={computerScore} />
           </div>
+
+          <RoundHistory rounds={roundHistory} opponentName={computerMode ? 'Computer' : 'Opponent'} />
 
           <footer className="match-footer">
             <div className="footer-actions">

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-export default function Lobby({ onJoin }) {
+export default function Lobby({ onJoin, onPlayComputer }) {
   const [roomId, setRoomId] = useState(() => new URLSearchParams(window.location.search).get('room') || Math.random().toString(36).slice(2, 8))
   const [playerName, setPlayerName] = useState(() => localStorage.getItem('playerName') || '')
 
@@ -26,6 +26,12 @@ export default function Lobby({ onJoin }) {
         <button className="button-primary" type="submit">Enter arena <span aria-hidden="true">↗</span></button>
       </div>
       <p className="lobby-form-note">Joining a shared room code pairs you with your opponent.</p>
+      <div className="computer-option">
+        <span>Playing solo?</span>
+        <button className="button-secondary" type="button" onClick={() => onPlayComputer(playerName.trim().slice(0, 20) || 'You')}>
+          <span aria-hidden="true">♟</span> Play against computer
+        </button>
+      </div>
     </form>
   )
 }

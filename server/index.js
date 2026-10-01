@@ -7,9 +7,20 @@ const server = http.createServer(app)
 const io = new Server(server, { cors: { origin: '*' } })
 app.get('/healthz', (_req, res) => res.status(200).send('ok'))
 
+const QUICK_REACTIONS = new Set(['👏', '😮', '😂', '👀'])
+
 // Simple room pairing: two players per room
 // rooms map will store { players: [], choices: {}, timeoutId: null }
 const rooms = new Map()
+
+function cancelPendingRound(room, roomId) {
+  if (room.timeoutId) clearTimeout(room.timeoutId)
+  room.timeoutId = null
+  if (Object.keys(room.choices || {}).length > 0) {
+    room.choices = {}
+    io.to(roomId).emit('roundCancelled')
+  }
+}
 
 io.on('connection', (socket) => {
   console.log('conn', socket.id)
@@ -38,6 +49,18 @@ io.on('connection', (socket) => {
     socket.join(roomName)
     console.log('room updated', roomName, room)
     io.to(roomName).emit('roomUpdate', { players: room.players, names: room.names })
+  })
+
+  socket.on('quickReaction', ({ roomId, reaction } = {}) => {
+    const room = rooms.get(roomId)
+    const now = Date.now()
+    if (!room || !room.players.includes(socket.id) || !QUICK_REACTIONS.has(reaction)) return
+    if (now - (socket.data.lastReactionAt || 0) < 800) return
+    socket.data.lastReactionAt = now
+    socket.to(roomId).emit('opponentReaction', {
+      reaction,
+      name: room.names?.[socket.id] || 'Opponent',
+    })
   })
 
   socket.on('playerChoice', ({ roomId, choice }) => {
@@ -110,6 +133,7 @@ io.on('connection', (socket) => {
     socket.leave(roomId)
     const room = rooms.get(roomId)
     if (room) {
+      cancelPendingRound(room, roomId)
       room.players = room.players.filter(id => id !== socket.id)
       if (room.names) delete room.names[socket.id]
       room.rematchReady = (room.rematchReady || []).filter(id => id !== socket.id)
@@ -124,6 +148,7 @@ io.on('connection', (socket) => {
     console.log('disconnect', socket.id)
     for (const [roomId, room] of rooms.entries()) {
       if (room.players.includes(socket.id)) {
+        cancelPendingRound(room, roomId)
         room.players = room.players.filter(id => id !== socket.id)
         if (room.names) delete room.names[socket.id]
         room.rematchReady = (room.rematchReady || []).filter(id => id !== socket.id)
