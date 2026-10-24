@@ -111,6 +111,9 @@ async function sendAccountCode(email, code, purpose) {
     host: SMTP_HOST,
     port: Number(SMTP_PORT),
     secure: process.env.SMTP_SECURE === 'true',
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
     auth: { user: SMTP_USER, pass: SMTP_PASSWORD.replace(/\s/g, '') },
   })
   await transporter.sendMail({
@@ -123,12 +126,18 @@ async function sendAccountCode(email, code, purpose) {
   return 'email'
 }
 
+function smtpConfigured() {
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM } = process.env
+  return Boolean(SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASSWORD && SMTP_FROM)
+}
+
 function verificationResponse(res, email, delivery, status = 200) {
   return res.status(status).json({
     verificationRequired: true,
     email,
     developmentCodeInServerLog: delivery === 'console',
     emailDeliveryFailed: delivery === 'failed',
+    emailDeliveryPending: delivery === 'pending',
   })
 }
 
@@ -139,6 +148,35 @@ async function deliverAccountCode(email, code, purpose) {
     console.error(`Could not send ${purpose} email:`, error)
     return 'failed'
   }
+}
+
+function queueAccountCodeDelivery({ email, code, purpose, userId, codeHash }) {
+  if (!smtpConfigured() && process.env.NODE_ENV === 'production') {
+    console.error(`Could not send ${purpose} email: SMTP is not configured`)
+    return 'failed'
+  }
+
+  const delivery = smtpConfigured() ? 'pending' : 'console'
+  setImmediate(async () => {
+    const result = await deliverAccountCode(email, code, purpose)
+    if (result !== 'failed') return
+
+    const hashColumn = purpose === 'password reset' ? 'password_reset_code_hash' : 'verification_code_hash'
+    const expiryColumn = purpose === 'password reset'
+      ? 'password_reset_code_expires_at'
+      : 'verification_code_expires_at'
+    try {
+      await pool.query(
+        `UPDATE users
+         SET ${hashColumn} = NULL, ${expiryColumn} = NULL
+         WHERE id = $1 AND ${hashColumn} = $2`,
+        [userId, codeHash],
+      )
+    } catch (error) {
+      console.error(`Could not clear undelivered ${purpose} code:`, error)
+    }
+  })
+  return delivery
 }
 
 function createSession(user) {
@@ -191,7 +229,13 @@ app.post('/api/auth/register', authLimiter, asyncRoute(async (req, res) => {
          WHERE id = $1`,
         [pendingUser.id, codeHash],
       )
-      const delivery = await deliverAccountCode(email, code, 'verification')
+      const delivery = queueAccountCodeDelivery({
+        email,
+        code,
+        purpose: 'verification',
+        userId: pendingUser.id,
+        codeHash,
+      })
       return verificationResponse(res, email, delivery)
     }
     if (error.constraint?.includes('email')) {
@@ -199,7 +243,13 @@ app.post('/api/auth/register', authLimiter, asyncRoute(async (req, res) => {
     }
     throw new ApiError(409, 'That username is already taken')
   }
-  const delivery = await deliverAccountCode(email, code, 'verification')
+  const delivery = queueAccountCodeDelivery({
+    email,
+    code,
+    purpose: 'verification',
+    userId: id,
+    codeHash,
+  })
   verificationResponse(res, email, delivery, 201)
 }))
 
@@ -246,11 +296,19 @@ app.post('/api/auth/resend-verification', authLimiter, asyncRoute(async (req, re
      WHERE id = $1`,
     [rows[0].id, verificationHash(code)],
   )
-  const delivery = await deliverAccountCode(email, code, 'verification')
+  const codeHash = verificationHash(code)
+  const delivery = queueAccountCodeDelivery({
+    email,
+    code,
+    purpose: 'verification',
+    userId: rows[0].id,
+    codeHash,
+  })
   res.json({
     message: 'If the account needs verification, a new code has been sent.',
     developmentCodeInServerLog: delivery === 'console',
     emailDeliveryFailed: delivery === 'failed',
+    emailDeliveryPending: delivery === 'pending',
   })
 }))
 
@@ -273,7 +331,13 @@ app.post('/api/auth/request-password-reset', authLimiter, asyncRoute(async (req,
      WHERE id = $1`,
     [user.id, codeHash],
   )
-  const delivery = await deliverAccountCode(email, code, 'password reset')
+  const delivery = queueAccountCodeDelivery({
+    email,
+    code,
+    purpose: 'password reset',
+    userId: user.id,
+    codeHash,
+  })
   if (delivery === 'failed') {
     await pool.query(
       `UPDATE users
@@ -286,6 +350,7 @@ app.post('/api/auth/request-password-reset', authLimiter, asyncRoute(async (req,
   res.json({
     message: 'If a verified account uses that email, a reset code has been sent.',
     developmentCodeInServerLog: delivery === 'console',
+    emailDeliveryPending: delivery === 'pending',
   })
 }))
 

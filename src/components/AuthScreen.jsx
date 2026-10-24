@@ -43,7 +43,9 @@ export default function AuthScreen({ onAuthenticated }) {
         setVerificationSent(true)
         setVerificationHint(result.developmentCodeInServerLog
           ? 'Local testing: the reset code is printed in the server terminal.'
-          : 'If that email belongs to a verified account, a reset code is on its way.')
+          : result.emailDeliveryPending
+            ? 'If that email belongs to a verified account, a reset code is being sent. Check your inbox shortly.'
+            : result.message)
       } else {
         const result = await apiRequest(`/auth/${isRegistering ? 'register' : 'login'}`, {
           method: 'POST',
@@ -56,7 +58,7 @@ export default function AuthScreen({ onAuthenticated }) {
             ? 'We could not send the email yet. Check the server email settings, then use Resend code.'
             : result.developmentCodeInServerLog
               ? 'Local testing: the code is printed in the server terminal.'
-              : 'A 6-digit code is on its way to your inbox.')
+              : 'Code requested. Check your inbox shortly; use Resend code if it does not arrive.')
           setError('')
         } else {
           onAuthenticated(result)
@@ -91,7 +93,9 @@ export default function AuthScreen({ onAuthenticated }) {
         ? 'We could not send the email yet. Check the server email settings and try again.'
         : result.developmentCodeInServerLog
           ? 'Local testing: the new code is printed in the server terminal.'
-          : result.message)
+          : result.emailDeliveryPending
+            ? 'New code requested. Check your inbox shortly.'
+            : result.message)
       setError('')
     } catch (requestError) {
       setError(requestError.message)
@@ -110,7 +114,9 @@ export default function AuthScreen({ onAuthenticated }) {
       })
       setVerificationHint(result.developmentCodeInServerLog
         ? 'Local testing: the new reset code is printed in the server terminal.'
-        : 'If that email belongs to a verified account, a new reset code is on its way.')
+        : result.emailDeliveryPending
+          ? 'If that email belongs to a verified account, a new reset code is being sent.'
+          : result.message)
     } catch (requestError) {
       setError(requestError.message)
     } finally {
