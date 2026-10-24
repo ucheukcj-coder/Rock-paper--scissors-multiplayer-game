@@ -4,10 +4,12 @@ import ChoiceButtons from './ChoiceButtons'
 import ResultDisplay from './ResultDisplay'
 import ScoreBoard from './ScoreBoard'
 import ResetButton from './ResetButton'
-import Lobby from './Lobby'
 import RoundHistory from './RoundHistory'
 import io from 'socket.io-client'
 import { playClick, playWin, playLose, playDraw, playNotif, resumeAudio } from '../sounds'
+import AuthScreen from './AuthScreen'
+import FriendHome from './FriendHome'
+import { API_BASE, apiRequest } from '../api'
 
 const CHOICES = ['Rock', 'Paper', 'Scissors']
 const QUICK_REACTIONS = ['👏', '😮', '😂', '👀']
@@ -30,6 +32,10 @@ export default function Game() {
   const roomIdRef = React.useRef('')
   const opponentSeenRef = React.useRef(false)
   const playerNameRef = React.useRef(localStorage.getItem('playerName') || '')
+  const [authToken, setAuthToken] = useState(() => localStorage.getItem('authToken') || '')
+  const [authUser, setAuthUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [gameSocket, setGameSocket] = useState(null)
   const [userChoice, setUserChoice] = useState('')
   const [computerChoice, setComputerChoice] = useState('')
   const [result, setResult] = useState('')
@@ -45,7 +51,6 @@ export default function Game() {
   const [roomId, setRoomId] = useState('')
   const [playerId, setPlayerId] = useState('')
   const [socketConnected, setSocketConnected] = useState(false)
-  const [inviteCopied, setInviteCopied] = useState(false)
   const [opponentConnected, setOpponentConnected] = useState(false)
   const [opponentDisconnected, setOpponentDisconnected] = useState(false)
   const [waiting, setWaiting] = useState(false)
@@ -61,14 +66,65 @@ export default function Game() {
   const [soundOn, setSoundOn] = useState(true)
 
   useEffect(() => {
-    // initialize socket once
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || (import.meta.env.DEV ? 'http://localhost:3000' : '')
-    if (!socketUrl) {
-      console.error('VITE_SOCKET_URL is not configured for this deployment')
-      return
+    const storedToken = localStorage.getItem('authToken')
+    if (!storedToken) {
+      setAuthLoading(false)
+      return undefined
     }
-    socketRef.current = io(socketUrl)
-    const s = socketRef.current
+    let cancelled = false
+    apiRequest('/auth/me', { token: storedToken })
+      .then(user => {
+        if (cancelled) return
+        setAuthToken(storedToken)
+        setAuthUser(user)
+        playerNameRef.current = user.username
+      })
+      .catch(() => {
+        if (cancelled) return
+        localStorage.removeItem('authToken')
+        setAuthToken('')
+      })
+      .finally(() => {
+        if (!cancelled) setAuthLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  function handleAuthenticated(session) {
+    localStorage.setItem('authToken', session.token)
+    localStorage.setItem('playerName', session.user.username)
+    playerNameRef.current = session.user.username
+    setAuthToken(session.token)
+    setAuthUser(session.user)
+    setAuthLoading(false)
+  }
+
+  function handleSignOut() {
+    if (socketRef.current && roomIdRef.current) socketRef.current.emit('leaveRoom', roomIdRef.current)
+    if (socketRef.current) socketRef.current.disconnect()
+    localStorage.removeItem('authToken')
+    setAuthToken('')
+    setAuthUser(null)
+    setInRoom(false)
+    setRoomId('')
+    roomIdRef.current = ''
+    setOpponentConnected(false)
+    handleReset()
+  }
+
+  useEffect(() => {
+    if (!authToken) {
+      setSocketConnected(false)
+      return undefined
+    }
+    const socketUrl = API_BASE
+    if (!socketUrl) {
+      console.error('VITE_API_URL or VITE_SOCKET_URL is not configured for this deployment')
+      return undefined
+    }
+    const s = io(socketUrl, { auth: { token: authToken } })
+    socketRef.current = s
+    setGameSocket(s)
     s.on('connect', () => {
       setSocketConnected(true)
       setPlayerId(s.id)
@@ -86,6 +142,9 @@ export default function Game() {
     s.on('connect_error', (error) => {
       setSocketConnected(false)
       console.error('Socket connection failed:', error.message)
+    })
+    s.on('friend:challenge-accepted', ({ roomId: acceptedRoomId }) => {
+      handleJoin(acceptedRoomId)
     })
     s.on('roomUpdate', (room) => {
       console.log('roomUpdate received', room)
@@ -170,11 +229,15 @@ export default function Game() {
     })
 
     return () => {
-      if (socketRef.current) socketRef.current.disconnect()
+      s.disconnect()
+      if (socketRef.current === s) {
+        socketRef.current = null
+        setGameSocket(null)
+      }
       if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
       if (reactionTimeoutRef.current) clearTimeout(reactionTimeoutRef.current)
     }
-  }, [])
+  }, [authToken])
 
   function handleChoose(choice) {
     if (!inRoom || userMadeChoice || gameOver) return
@@ -227,11 +290,11 @@ export default function Game() {
     })
   }
 
-  function handleJoin(room, name) {
+  function handleJoin(room) {
     if (!socketRef.current || !socketRef.current.connected) return
     setComputerMode(false)
-    playerNameRef.current = name
-    socketRef.current.emit('joinRoom', { roomId: room, name })
+    playerNameRef.current = authUser?.username || playerNameRef.current || 'You'
+    socketRef.current.emit('joinRoom', { roomId: room })
     setRoomId(room)
     roomIdRef.current = room
     opponentSeenRef.current = false
@@ -239,11 +302,10 @@ export default function Game() {
     setInRoom(true)
   }
 
-  function handlePlayComputer(name) {
-    playerNameRef.current = name
-    if (name !== 'You') localStorage.setItem('playerName', name)
+  function handlePlayComputer() {
+    playerNameRef.current = authUser?.username || 'You'
     setComputerMode(true)
-    setRoomId('COMPUTER')
+    setRoomId('FRIENDLY MATCH')
     setOpponentConnected(true)
     setInRoom(true)
     handleReset()
@@ -270,16 +332,6 @@ export default function Game() {
     socketRef.current.emit('requestRematch', roomId)
   }
 
-  async function handleCopyInvite() {
-    try {
-      await navigator.clipboard.writeText(window.location.href)
-      setInviteCopied(true)
-      setTimeout(() => setInviteCopied(false), 2000)
-    } catch (error) {
-      console.error('Could not copy invite link:', error)
-    }
-  }
-
   function handleReset() {
     setUserChoice('')
     setComputerChoice('')
@@ -296,58 +348,61 @@ export default function Game() {
     setCountdownLeft(0)
   }
 
+  const opponentName = computerMode
+    ? 'Computer'
+    : roomPlayerNames[roomPlayers.find(id => id !== socketRef.current?.id)] || 'Opponent'
+
   return (
-    <main className="app-shell">
-      <header className="app-header">
-        <Header />
-        <div className={'connection-state' + (socketConnected ? ' is-online' : ' is-offline')} role="status">
-          <span className="state-dot" />{socketConnected ? 'Server online' : 'Connecting'}
-        </div>
-      </header>
-      {!socketConnected && import.meta.env.PROD && !import.meta.env.VITE_SOCKET_URL && (
-        <div className="notice" role="alert">Multiplayer server URL is not configured for this deployment.</div>
-      )}
-      {!inRoom ? (
-        <section className="lobby-stage">
-          <div className="lobby-copy">
-            <div className="eyebrow">Two players. One room. No takesies-backsies.</div>
-            <h2 className="lobby-title">Make your<br /><span>move.</span></h2>
-            <p className="lobby-subtitle">A quick head-to-head. Pick your room, bring a rival, and see who reads the game better.</p>
-            <div className="lobby-art" aria-hidden="true">✊</div>
-          </div>
-          <Lobby onJoin={handleJoin} onPlayComputer={handlePlayComputer} />
-        </section>
+    <>
+      {authLoading ? (
+        <main className="auth-loading"><span className="auth-spinner" />Checking your player account…</main>
+      ) : !authUser ? (
+        <AuthScreen onAuthenticated={handleAuthenticated} />
+      ) : !inRoom ? (
+        <FriendHome
+          user={authUser}
+          token={authToken}
+          socket={gameSocket}
+          onSignOut={handleSignOut}
+          onPlayComputer={handlePlayComputer}
+          onJoinGame={handleJoin}
+        />
       ) : (
+        <main className="app-shell">
+          <header className="app-header">
+            <Header />
+            <div className={'connection-state' + (socketConnected ? ' is-online' : ' is-offline')} role="status">
+              <span className="state-dot" />{socketConnected ? 'Server online' : 'Reconnecting'}
+            </div>
+          </header>
+          {!socketConnected && (
+            <div className="notice reconnect-notice" role="status">Connection lost. Reconnecting to your match…</div>
+          )}
         <section className="match-view">
           <div className="match-toolbar">
             <div className="room-block">
-              <div className="room-token"><span className="meta-label">{computerMode ? 'Mode' : 'Room'}</span><span className="room-code">{roomId}</span></div>
+              <div className="room-token"><span className="meta-label">PRIVATE MATCH</span><span className="room-code">{computerMode ? 'Computer practice' : `${playerNameRef.current} vs. ${opponentName}`}</span></div>
               <div className={'match-state' + (opponentConnected ? ' is-online' : '')}>
                 <span className="state-dot" />{computerMode ? 'Computer ready' : opponentConnected ? 'Opponent connected' : 'Waiting for opponent'}
               </div>
-              <div className="players-online">{computerMode ? '1P' : `${roomPlayers.length}/2`}</div>
             </div>
             <div className="toolbar-actions">
-              {!computerMode && <button className="button-secondary" onClick={handleCopyInvite}>{inviteCopied ? 'Copied' : 'Copy invite link'} <span aria-hidden="true">↗</span></button>}
-              <button className="button-quiet" onClick={handleLeave}>Leave room</button>
+              <button className="button-quiet" onClick={handleLeave}>← Back to clubhouse</button>
             </div>
           </div>
 
-          {!computerMode && !socketConnected && (
-            <div className="notice reconnect-notice" role="status">
-              Connection lost. Reconnecting to room {roomId}… Keep this page open.
-            </div>
-          )}
           {!computerMode && socketConnected && opponentDisconnected && (
             <div className="notice reconnect-notice" role="status">
-              Your opponent disconnected. Waiting for them to reconnect to room {roomId}.
+              Your friend disconnected. Waiting for them to reconnect.
             </div>
           )}
 
+          <div className="match-layout">
+            <div className="match-main">
           <div className="round-strip">
             <div className="round-note">
               <span className="state-dot" />
-              <span>{computerMode ? <><strong>Computer ready</strong> · choose your move</> : waiting ? <><strong>Round resolving</strong> · waiting for reveal</> : userMadeChoice ? <><strong>Move locked</strong> · waiting on opponent</> : opponentConnected ? <><strong>Both players ready</strong> · choose your move</> : opponentDisconnected ? <>Waiting for your opponent to reconnect</> : <>Share the invite to bring your opponent in</>}</span>
+              <span>{computerMode ? <><strong>Computer ready</strong> · choose your move</> : waiting ? <><strong>Round resolving</strong> · waiting for reveal</> : userMadeChoice ? <><strong>Move locked</strong> · waiting on opponent</> : opponentConnected ? <><strong>Both players ready</strong> · choose your move</> : opponentDisconnected ? <>Waiting for your friend to reconnect</> : <>Waiting for your friend to join</>}</span>
             </div>
             {countdownLeft > 0 && (
               <div className="countdown">
@@ -369,7 +424,7 @@ export default function Game() {
               </div>
               {opponentReaction && (
                 <span className="incoming-reaction" role="status">
-                  {opponentReaction.name}: {opponentReaction.reaction}
+                  {opponentReaction.reaction}
                 </span>
               )}
             </div>
@@ -388,17 +443,16 @@ export default function Game() {
             </div>
           )}
 
-          <ResultDisplay userChoice={userChoice} computerChoice={computerChoice} result={result} opponentMade={opponentMade} opponentName={computerMode ? 'Computer' : roomPlayerNames[roomPlayers.find(id => id !== socketRef.current?.id)] || 'Opponent'} opponentCaption={computerMode ? 'CPU opponent' : 'Guest player'} playerName={playerNameRef.current || 'You'} />
+          <ScoreBoard userScore={userScore} computerScore={computerScore} userName={playerNameRef.current || 'You'} opponentName={opponentName} />
+
+          <ResultDisplay userChoice={userChoice} computerChoice={computerChoice} result={result} opponentMade={opponentMade} opponentName={opponentName} opponentCaption={computerMode ? 'CPU opponent' : 'Guest player'} playerName={playerNameRef.current || 'You'} />
 
           <div className="decision-row">
             <div>
               <h2 className="decision-title">Choose your move</h2>
               <ChoiceButtons onChoose={handleChoose} disabled={(!computerMode && !opponentConnected) || userMadeChoice || gameOver} userChoice={userChoice} />
             </div>
-            <ScoreBoard userScore={userScore} computerScore={computerScore} />
           </div>
-
-          <RoundHistory rounds={roundHistory} opponentName={computerMode ? 'Computer' : 'Opponent'} />
 
           <footer className="match-footer">
             <div className="footer-actions">
@@ -407,8 +461,14 @@ export default function Game() {
             </div>
             <div className="round-target">{gameOver ? 'MATCH COMPLETE' : 'FIRST TO 5 WINS'}</div>
           </footer>
+            </div>
+            <aside className="match-history">
+              <RoundHistory rounds={roundHistory} opponentName={opponentName} />
+            </aside>
+          </div>
         </section>
+        </main>
       )}
-    </main>
+    </>
   )
 }
