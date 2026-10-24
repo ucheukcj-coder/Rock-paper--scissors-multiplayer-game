@@ -4,13 +4,17 @@ Rock Paper Scissors with player accounts, friend requests, online presence, and 
 
 ## Deploy
 
-GitHub Pages hosts the frontend. Render deploys the existing Express/Socket.IO server and provisions PostgreSQL using `render.yaml`.
+GitHub Pages hosts the frontend. Railway runs the Express/Socket.IO server as one persistent Node service, and its PostgreSQL service stores accounts and friendships.
 
-1. Create a Render Blueprint instance from this repository and allow it to create the web service and PostgreSQL database.
-2. In GitHub, open **Settings > Secrets and variables > Actions > Variables** and set `VITE_SOCKET_URL` to the deployed server's public HTTPS URL.
-3. Rerun **Deploy React app to GitHub Pages** or push a commit.
+1. In Railway, create a project from this GitHub repository and add a PostgreSQL service.
+2. Add a server service from the same repository. In the service's **Settings**, set its **Root Directory** to `/server`. Railway detects `npm start` from `server/package.json`. Set its health check path to `/healthz`.
+3. In the server service's **Variables**, add `NODE_ENV=production`, `CLIENT_ORIGIN=https://ucheukcj-coder.github.io`, and a `JWT_SECRET` with at least 32 random characters. Add `DATABASE_URL` as a reference to the PostgreSQL service's `DATABASE_URL`.
+4. Add the SMTP variables from `server/.env.example` to the server service if email verification is needed. Keep these credentials private.
+5. In **Settings > Networking**, generate a public domain for the Railway server. Copy its HTTPS origin (without a trailing slash).
+6. In GitHub, open **Settings > Secrets and variables > Actions > Variables** and set `VITE_API_URL` to that public HTTPS origin.
+7. Rerun **Deploy React app to GitHub Pages**. Check both the Railway deployment and the GitHub Actions run.
 
-The workflow validates that `VITE_SOCKET_URL` is HTTPS. Set Render's `CLIENT_ORIGIN` to the GitHub Pages origin if the site is hosted elsewhere. Free Render services can take a short time to wake after inactivity, and free database plans may have availability or retention limits; use an appropriate paid database plan for long-lived production accounts.
+Keep the Railway server at one replica: active game rooms and presence are held in server memory and are not shared between replicas. Set the `VITE_API_URL` Actions variable before rebuilding the frontend; it takes precedence over the legacy `VITE_SOCKET_URL` setting and the old Render default. Existing accounts in another deployment's database are not copied automatically; leave the old service and database intact until any required data migration is planned.
 
 ## Run locally
 
@@ -27,10 +31,10 @@ For testing against a PostgreSQL server instead, create `server/.env` with:
    CLIENT_ORIGIN=http://localhost:5173
    ```
 
-`DATABASE_URL` selects PostgreSQL; if it is unset, local embedded storage is used during development. Production requires `DATABASE_URL` and exits with a clear configuration error rather than starting the memory-intensive local database. Render deployments use the PostgreSQL database configured in `render.yaml`. The local-only signing key must not be used in a deployed environment.
+`DATABASE_URL` selects PostgreSQL; if it is unset, local embedded storage is used during development. Production requires `DATABASE_URL` and exits with a clear configuration error rather than starting the memory-intensive local database. The local-only signing key must not be used in a deployed environment.
 
 When SMTP is not configured, local verification codes are printed in the server terminal; they are not emailed. To send through Gmail, enable 2-Step Verification on your Google account, create a Google App Password, and copy `server/.env.example` to `server/.env`. Fill in your Gmail address and App Password:
 
-Use the App Password, not your regular Gmail password. Restart the server after changing `server/.env`. For a hosted deployment, set the same variables in the service's environment settings and redeploy; the Render Blueprint declares the SMTP variables but does not provide their values. In production, `NODE_ENV=production` prevents local code logging when mail settings are missing. New accounts must verify their email before signing in; an unverified account can return to the code screen from sign-in and request another code. Usernames and email addresses are unique. Set `LOCAL_DATABASE_PATH` to use a different local embedded database directory.
+Use the App Password, not your regular Gmail password. Restart the server after changing `server/.env`. For a hosted deployment, set the same variables in the service's environment settings and redeploy. In production, `NODE_ENV=production` prevents local code logging when mail settings are missing. New accounts must verify their email before signing in; an unverified account can return to the code screen from sign-in and request another code. Usernames and email addresses are unique. Set `LOCAL_DATABASE_PATH` to use a different local embedded database directory.
 
 Passwords are hashed before storage. Never reuse a real password in development or commit environment files containing secrets.
