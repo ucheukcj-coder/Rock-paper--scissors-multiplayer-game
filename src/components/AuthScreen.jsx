@@ -10,6 +10,8 @@ export default function AuthScreen({ onAuthenticated }) {
   const [isVerifying, setIsVerifying] = useState(false)
   const [verificationSent, setVerificationSent] = useState(false)
   const [verificationHint, setVerificationHint] = useState('')
+  const [isRequestingPasswordReset, setIsRequestingPasswordReset] = useState(false)
+  const [isResettingPassword, setIsResettingPassword] = useState(false)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [mobileAuthOpen, setMobileAuthOpen] = useState(false)
@@ -25,6 +27,23 @@ export default function AuthScreen({ onAuthenticated }) {
           body: { email, code: verificationCode },
         })
         onAuthenticated(session)
+      } else if (isResettingPassword) {
+        const session = await apiRequest('/auth/reset-password', {
+          method: 'POST',
+          body: { email, code: verificationCode, password },
+        })
+        onAuthenticated(session)
+      } else if (isRequestingPasswordReset) {
+        const result = await apiRequest('/auth/request-password-reset', {
+          method: 'POST',
+          body: { email },
+        })
+        setIsRequestingPasswordReset(false)
+        setIsResettingPassword(true)
+        setVerificationSent(true)
+        setVerificationHint(result.developmentCodeInServerLog
+          ? 'Local testing: the reset code is printed in the server terminal.'
+          : 'If that email belongs to a verified account, a reset code is on its way.')
       } else {
         const result = await apiRequest(`/auth/${isRegistering ? 'register' : 'login'}`, {
           method: 'POST',
@@ -34,7 +53,7 @@ export default function AuthScreen({ onAuthenticated }) {
           setIsVerifying(true)
           setVerificationSent(true)
           setVerificationHint(result.emailDeliveryFailed
-            ? 'We could not send the email yet. Use Resend code after email delivery is configured.'
+            ? 'We could not send the email yet. Check the server email settings, then use Resend code.'
             : result.developmentCodeInServerLog
               ? 'Local testing: the code is printed in the server terminal.'
               : 'A 6-digit code is on its way to your inbox.')
@@ -81,6 +100,34 @@ export default function AuthScreen({ onAuthenticated }) {
     }
   }
 
+  async function resendPasswordResetCode() {
+    setBusy(true)
+    setError('')
+    try {
+      const result = await apiRequest('/auth/request-password-reset', {
+        method: 'POST',
+        body: { email },
+      })
+      setVerificationHint(result.developmentCodeInServerLog
+        ? 'Local testing: the new reset code is printed in the server terminal.'
+        : 'If that email belongs to a verified account, a new reset code is on its way.')
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function returnToSignIn() {
+    setIsVerifying(false)
+    setIsRequestingPasswordReset(false)
+    setIsResettingPassword(false)
+    setIsRegistering(false)
+    setVerificationCode('')
+    setVerificationHint('')
+    setError('')
+  }
+
   return (
     <main className={`auth-page${mobileAuthOpen ? ' show-mobile-auth' : ''}`}>
       <section className="auth-promo">
@@ -103,16 +150,28 @@ export default function AuthScreen({ onAuthenticated }) {
           <span className="auth-label">PLAYER ACCESS</span>
         </div>
         <div className="auth-form-wrap">
-          <p className="eyebrow">{isVerifying ? 'One last step' : isRegistering ? 'Create your player account' : 'Welcome back'}</p>
-          <h2>{isVerifying ? 'Check your inbox.' : isRegistering ? 'Join the arena.' : 'Ready for a rematch?'}</h2>
-          <p className="auth-form-intro">
-            {isVerifying ? `Enter the 6-digit code sent to ${email}. It expires in 15 minutes.` : isRegistering ? 'Claim your username and find your friends.' : 'Sign in and see who’s around.'}
+          <p className="eyebrow">
+            {isVerifying || isResettingPassword ? 'One last step' : isRequestingPasswordReset ? 'Account recovery' : isRegistering ? 'Create your player account' : 'Welcome back'}
           </p>
-          {isVerifying && verificationHint && <p className="verification-hint" role="status">{verificationHint}</p>}
+          <h2>
+            {isVerifying ? 'Check your inbox.' : isResettingPassword ? 'Choose a new password.' : isRequestingPasswordReset ? 'Forgot your password?' : isRegistering ? 'Join the arena.' : 'Ready for a rematch?'}
+          </h2>
+          <p className="auth-form-intro">
+            {isVerifying
+              ? `Enter the 6-digit code sent to ${email}. It expires in 15 minutes.`
+              : isResettingPassword
+                ? `Enter the 6-digit reset code sent to ${email} and choose a new password.`
+                : isRequestingPasswordReset
+                  ? 'Enter the email address linked to your verified account and we’ll send a reset code.'
+                  : isRegistering
+                    ? 'Claim your username and find your friends.'
+                    : 'Sign in and see who’s around.'}
+          </p>
+          {(isVerifying || isResettingPassword) && verificationHint && <p className="verification-hint" role="status">{verificationHint}</p>}
           <form className="auth-form" onSubmit={handleSubmit}>
-            {isVerifying ? (
+            {isVerifying || isResettingPassword ? (
               <>
-                <label htmlFor="auth-verification-code">Email verification code</label>
+                <label htmlFor="auth-verification-code">{isResettingPassword ? 'Password reset code' : 'Email verification code'}</label>
                 <input
                   id="auth-verification-code"
                   inputMode="numeric"
@@ -122,6 +181,36 @@ export default function AuthScreen({ onAuthenticated }) {
                   pattern="[0-9]{6}"
                   maxLength={6}
                   placeholder="000000"
+                  required
+                />
+                {isResettingPassword && (
+                  <>
+                    <label htmlFor="auth-password">New password</label>
+                    <input
+                      id="auth-password"
+                      type="password"
+                      value={password}
+                      onChange={event => setPassword(event.target.value)}
+                      minLength={8}
+                      maxLength={72}
+                      autoComplete="new-password"
+                      placeholder="At least 8 characters"
+                      required
+                    />
+                  </>
+                )}
+              </>
+            ) : isRequestingPasswordReset ? (
+              <>
+                <label htmlFor="auth-email">Email address</label>
+                <input
+                  id="auth-email"
+                  type="email"
+                  value={email}
+                  onChange={event => setEmail(event.target.value)}
+                  maxLength={254}
+                  autoComplete="email"
+                  placeholder="you@example.com"
                   required
                 />
               </>
@@ -171,23 +260,52 @@ export default function AuthScreen({ onAuthenticated }) {
             )}
             {error && <p className="form-error" role="alert">{error}</p>}
             <button className="auth-submit" type="submit" disabled={busy}>
-              {busy ? 'One moment…' : isVerifying ? 'Verify email' : isRegistering ? 'Create account' : 'Sign in'}
+              {busy
+                ? 'One moment…'
+                : isVerifying
+                  ? 'Verify email'
+                  : isResettingPassword
+                    ? 'Reset password'
+                    : isRequestingPasswordReset
+                      ? 'Send reset code'
+                      : isRegistering
+                        ? 'Create account'
+                        : 'Sign in'}
               <span aria-hidden="true">↗</span>
             </button>
           </form>
           {isVerifying ? (
             <div className="auth-verification-actions">
               <button type="button" disabled={busy || !verificationSent} onClick={resendCode}>Resend code</button>
-              <button type="button" onClick={() => { setIsVerifying(false); setIsRegistering(false); setError('') }}>Back to sign in</button>
+              <button type="button" onClick={() => { returnToSignIn(); setIsRegistering(false) }}>Back to sign in</button>
+            </div>
+          ) : isResettingPassword ? (
+            <div className="auth-verification-actions auth-reset-actions">
+              <button type="button" disabled={busy} onClick={resendPasswordResetCode}>Resend reset code</button>
+              <button type="button" disabled={busy} onClick={() => { setIsResettingPassword(false); setIsRequestingPasswordReset(true); setVerificationCode(''); setError('') }}>Use another email</button>
+              <button type="button" disabled={busy} onClick={returnToSignIn}>Back to sign in</button>
+            </div>
+          ) : isRequestingPasswordReset ? (
+            <div className="auth-verification-actions">
+              <button type="button" onClick={returnToSignIn}>Back to sign in</button>
             </div>
           ) : (
-            <p className="auth-switch">
-              {isRegistering ? 'Already have an account?' : 'New around here?'}
-              {' '}
-              <button type="button" onClick={() => { setIsRegistering(value => !value); setError('') }}>
-                {isRegistering ? 'Sign in' : 'Create an account'}
-              </button>
-            </p>
+            <>
+              <p className="auth-switch">
+                {isRegistering ? 'Already have an account?' : 'New around here?'}
+                {' '}
+                <button type="button" onClick={() => { setIsRegistering(value => !value); setError('') }}>
+                  {isRegistering ? 'Sign in' : 'Create an account'}
+                </button>
+              </p>
+              {!isRegistering && (
+                <p className="auth-switch auth-forgot-password">
+                  <button type="button" onClick={() => { setIsRequestingPasswordReset(true); setError(''); setVerificationHint('') }}>
+                    Forgot password?
+                  </button>
+                </p>
+              )}
+            </>
           )}
           <p className="auth-security-note"><span aria-hidden="true">◈</span> Your password is securely hashed and never shown to other players.</p>
         </div>

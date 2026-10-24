@@ -32,6 +32,8 @@ export async function initializeDatabase() {
       email_verified boolean NOT NULL DEFAULT true,
       verification_code_hash varchar(64),
       verification_code_expires_at timestamptz,
+      password_reset_code_hash varchar(64),
+      password_reset_code_expires_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT users_username_format CHECK (username ~ '^[a-z0-9_]{3,20}$')
     )`,
@@ -39,6 +41,8 @@ export async function initializeDatabase() {
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT true',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code_hash varchar(64)',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code_expires_at timestamptz',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_code_hash varchar(64)',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_code_expires_at timestamptz',
     'CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx ON users(email) WHERE email IS NOT NULL',
     `CREATE TABLE IF NOT EXISTS friend_requests (
       id uuid PRIMARY KEY,

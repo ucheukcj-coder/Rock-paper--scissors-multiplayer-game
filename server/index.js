@@ -92,16 +92,21 @@ function verificationHash(code) {
   return createHmac('sha256', signingSecret).update(code).digest('hex')
 }
 
-async function sendVerificationCode(email, code) {
+async function sendAccountCode(email, code, purpose) {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM } = process.env
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASSWORD || !SMTP_FROM) {
     if (process.env.NODE_ENV === 'production') {
-      throw new ApiError(503, 'Email verification is not configured. Please try again later.')
+      throw new ApiError(503, 'Email delivery is not configured. Please try again later.')
     }
-    console.info(`[local email verification] ${email}: code ${code} (expires in 15 minutes)`)
+    console.info(`[local ${purpose} code] ${email}: code ${code} (expires in 15 minutes)`)
     return 'console'
   }
 
+  const isPasswordReset = purpose === 'password reset'
+  const subject = isPasswordReset ? 'Your RPS Club password reset code' : 'Your RPS Club verification code'
+  const message = isPasswordReset
+    ? 'Use this code to reset your RPS Club password.'
+    : 'Use this code to verify your RPS Club email address.'
   const transporter = nodemailer.createTransport({
     host: SMTP_HOST,
     port: Number(SMTP_PORT),
@@ -111,11 +116,29 @@ async function sendVerificationCode(email, code) {
   await transporter.sendMail({
     from: SMTP_FROM,
     to: email,
-    subject: 'Your RPS Club verification code',
-    text: `Your RPS Club verification code is ${code}. It expires in 15 minutes.`,
-    html: `<p>Your RPS Club verification code is:</p><p style="font-size:28px;font-weight:bold;letter-spacing:8px">${code}</p><p>This code expires in 15 minutes. If you did not create an account, you can ignore this email.</p>`,
+    subject,
+    text: `${message} Your code is ${code}. It expires in 15 minutes.`,
+    html: `<p>${message}</p><p style="font-size:28px;font-weight:bold;letter-spacing:8px">${code}</p><p>This code expires in 15 minutes. If you did not request this, you can ignore this email.</p>`,
   })
   return 'email'
+}
+
+function verificationResponse(res, email, delivery, status = 200) {
+  return res.status(status).json({
+    verificationRequired: true,
+    email,
+    developmentCodeInServerLog: delivery === 'console',
+    emailDeliveryFailed: delivery === 'failed',
+  })
+}
+
+async function deliverAccountCode(email, code, purpose) {
+  try {
+    return await sendAccountCode(email, code, purpose)
+  } catch (error) {
+    console.error(`Could not send ${purpose} email:`, error)
+    return 'failed'
+  }
 }
 
 function createSession(user) {
@@ -153,25 +176,31 @@ app.post('/api/auth/register', authLimiter, asyncRoute(async (req, res) => {
       [id, username, passwordHash, email, codeHash],
     )
   } catch (error) {
-    if (error.code === '23505' && error.constraint?.includes('email')) {
+    if (error.code !== '23505') throw error
+
+    const { rows } = await pool.query(
+      `SELECT id FROM users
+       WHERE email = $1 AND email_verified = false`,
+      [email],
+    )
+    const pendingUser = rows[0]
+    if (pendingUser) {
+      await pool.query(
+        `UPDATE users
+         SET verification_code_hash = $2, verification_code_expires_at = now() + interval '15 minutes'
+         WHERE id = $1`,
+        [pendingUser.id, codeHash],
+      )
+      const delivery = await deliverAccountCode(email, code, 'verification')
+      return verificationResponse(res, email, delivery)
+    }
+    if (error.constraint?.includes('email')) {
       throw new ApiError(409, 'An account already uses that email address')
     }
-    if (error.code === '23505') throw new ApiError(409, 'That username is already taken')
-    throw error
+    throw new ApiError(409, 'That username is already taken')
   }
-  let delivery = 'email'
-  try {
-    delivery = await sendVerificationCode(email, code)
-  } catch (error) {
-    console.error('Could not send verification email:', error)
-    delivery = 'failed'
-  }
-  res.status(201).json({
-    verificationRequired: true,
-    email,
-    developmentCodeInServerLog: delivery === 'console',
-    emailDeliveryFailed: delivery === 'failed',
-  })
+  const delivery = await deliverAccountCode(email, code, 'verification')
+  verificationResponse(res, email, delivery, 201)
 }))
 
 app.post('/api/auth/verify-email', authLimiter, asyncRoute(async (req, res) => {
@@ -217,18 +246,82 @@ app.post('/api/auth/resend-verification', authLimiter, asyncRoute(async (req, re
      WHERE id = $1`,
     [rows[0].id, verificationHash(code)],
   )
-  let delivery = 'email'
-  try {
-    delivery = await sendVerificationCode(email, code)
-  } catch (error) {
-    console.error('Could not resend verification email:', error)
-    delivery = 'failed'
-  }
+  const delivery = await deliverAccountCode(email, code, 'verification')
   res.json({
     message: 'If the account needs verification, a new code has been sent.',
     developmentCodeInServerLog: delivery === 'console',
     emailDeliveryFailed: delivery === 'failed',
   })
+}))
+
+app.post('/api/auth/request-password-reset', authLimiter, asyncRoute(async (req, res) => {
+  const email = emailFrom(req.body)
+  const { rows } = await pool.query(
+    'SELECT id FROM users WHERE email = $1 AND email_verified = true',
+    [email],
+  )
+  const user = rows[0]
+  if (!user) {
+    return res.json({ message: 'If a verified account uses that email, a reset code has been sent.' })
+  }
+
+  const code = String(randomInt(100000, 1000000))
+  const codeHash = verificationHash(code)
+  await pool.query(
+    `UPDATE users
+     SET password_reset_code_hash = $2, password_reset_code_expires_at = now() + interval '15 minutes'
+     WHERE id = $1`,
+    [user.id, codeHash],
+  )
+  const delivery = await deliverAccountCode(email, code, 'password reset')
+  if (delivery === 'failed') {
+    await pool.query(
+      `UPDATE users
+       SET password_reset_code_hash = NULL, password_reset_code_expires_at = NULL
+       WHERE id = $1 AND password_reset_code_hash = $2`,
+      [user.id, codeHash],
+    )
+    throw new ApiError(503, 'We could not send a reset code right now. Please try again later.')
+  }
+  res.json({
+    message: 'If a verified account uses that email, a reset code has been sent.',
+    developmentCodeInServerLog: delivery === 'console',
+  })
+}))
+
+app.post('/api/auth/reset-password', authLimiter, asyncRoute(async (req, res) => {
+  const email = emailFrom(req.body)
+  const code = typeof req.body?.code === 'string' ? req.body.code.trim() : ''
+  if (!/^\d{6}$/.test(code)) throw new ApiError(400, 'Enter the 6-digit reset code from your email')
+  const password = passwordFrom(req.body)
+  const suppliedHash = verificationHash(code)
+  const { rows } = await pool.query(
+    `SELECT id, username, email, email_verified, created_at, password_reset_code_hash
+     FROM users
+     WHERE email = $1 AND email_verified = true AND password_reset_code_expires_at > now()`,
+    [email],
+  )
+  const user = rows[0]
+  const storedHash = user?.password_reset_code_hash
+    ? Buffer.from(user.password_reset_code_hash, 'hex')
+    : Buffer.alloc(32)
+  const suppliedHashBuffer = Buffer.from(suppliedHash, 'hex')
+  if (!user || storedHash.length !== suppliedHashBuffer.length || !timingSafeEqual(storedHash, suppliedHashBuffer)) {
+    throw new ApiError(400, 'That code is incorrect or expired. Request a new reset code and try again.')
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12)
+  const { rows: updatedUsers } = await pool.query(
+    `UPDATE users
+     SET password_hash = $3, password_reset_code_hash = NULL, password_reset_code_expires_at = NULL
+     WHERE id = $1 AND password_reset_code_hash = $2 AND password_reset_code_expires_at > now()
+     RETURNING id, username, email, email_verified, created_at`,
+    [user.id, suppliedHash, passwordHash],
+  )
+  if (!updatedUsers[0]) {
+    throw new ApiError(400, 'That code is incorrect or expired. Request a new reset code and try again.')
+  }
+  res.json(createSession(updatedUsers[0]))
 }))
 
 app.post('/api/auth/login', authLimiter, asyncRoute(async (req, res) => {
