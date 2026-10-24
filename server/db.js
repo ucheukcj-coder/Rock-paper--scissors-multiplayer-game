@@ -1,6 +1,5 @@
 import dotenv from 'dotenv'
 import pg from 'pg'
-import { PGlite } from '@electric-sql/pglite'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -8,12 +7,20 @@ const { Pool } = pg
 const serverDir = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.join(serverDir, '.env') })
 
-export const pool = process.env.DATABASE_URL
-  ? new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
-    })
-  : new PGlite(process.env.LOCAL_DATABASE_PATH || path.join(serverDir, '.local-db'))
+let pool
+if (process.env.DATABASE_URL) {
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+  })
+} else if (process.env.NODE_ENV === 'production') {
+  throw new Error('DATABASE_URL must be configured in production; the embedded database is for local development only')
+} else {
+  const { PGlite } = await import('@electric-sql/pglite')
+  pool = new PGlite(process.env.LOCAL_DATABASE_PATH || path.join(serverDir, '.local-db'))
+}
+
+export { pool }
 
 export async function initializeDatabase() {
   const statements = [

@@ -27,7 +27,7 @@ For testing against a PostgreSQL server instead, create `server/.env` with:
    CLIENT_ORIGIN=http://localhost:5173
    ```
 
-`DATABASE_URL` selects PostgreSQL; if it is unset, local embedded storage is used. Render deployments use the PostgreSQL database configured in `render.yaml`. The local-only signing key must not be used in a deployed environment.
+`DATABASE_URL` selects PostgreSQL; if it is unset, local embedded storage is used during development. Production requires `DATABASE_URL` and exits with a clear configuration error rather than starting the memory-intensive local database. Render deployments use the PostgreSQL database configured in `render.yaml`. The local-only signing key must not be used in a deployed environment.
 
 When SMTP is not configured, local verification codes are printed in the server terminal; they are not emailed. To send through Gmail, enable 2-Step Verification on your Google account, create a Google App Password, and copy `server/.env.example` to `server/.env`. Fill in your Gmail address and App Password:
 
