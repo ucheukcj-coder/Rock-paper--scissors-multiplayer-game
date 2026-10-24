@@ -4,17 +4,15 @@ Rock Paper Scissors with player accounts, friend requests, online presence, and 
 
 ## Deploy
 
-GitHub Pages hosts the frontend. Railway runs the Express/Socket.IO server as one persistent Node service, and its PostgreSQL service stores accounts and friendships.
+GitHub Pages hosts the frontend. Render runs the Express/Socket.IO server and PostgreSQL database together using the repository's `render.yaml` Blueprint.
 
-1. In Railway, create a project from this GitHub repository and add a PostgreSQL service.
-2. Add a server service from the same repository. In the service's **Settings**, set its **Root Directory** to `/server`. Railway detects `npm start` from `server/package.json`. Set its health check path to `/healthz`.
-3. In the server service's **Variables**, add `NODE_ENV=production`, `CLIENT_ORIGIN=https://ucheukcj-coder.github.io`, and a `JWT_SECRET` with at least 32 random characters. Add `DATABASE_URL` as a reference to the PostgreSQL service's `DATABASE_URL`.
-4. Add the SMTP variables from `server/.env.example` to the server service if email verification is needed. Keep these credentials private.
-5. In **Settings > Networking**, generate a public domain for the Railway server. Copy its HTTPS origin (without a trailing slash).
-6. In GitHub, open **Settings > Secrets and variables > Actions > Variables** and set `VITE_API_URL` to that public HTTPS origin.
-7. Rerun **Deploy React app to GitHub Pages**. Check both the Railway deployment and the GitHub Actions run.
+1. In Render, create a Blueprint from this GitHub repository, or open the existing Blueprint and select **Manual sync**.
+2. Review the proposed changes. The Blueprint creates the `multiplayer-clone-db` PostgreSQL database and links its connection string to the `multiplayer-clone-socket` service as `DATABASE_URL`. Approve the sync to apply it.
+3. Wait for the database status to become **Available** and the web service's latest deploy to show **Live** or **Deploy succeeded**.
+4. The Blueprint sets `NODE_ENV`, `JWT_SECRET`, and `CLIENT_ORIGIN`. Configure the SMTP variables from `server/.env.example` in the web service's **Environment** settings if they are not already set; keep these credentials private. New account verification requires working SMTP.
+5. GitHub Pages is configured to use the Render URL `https://multiplayer-clone-socket.onrender.com`. If the server's public URL changes, set `VITE_SOCKET_URL` in GitHub **Settings > Secrets and variables > Actions > Variables** to its public HTTPS URL, then rerun **Deploy React app to GitHub Pages**.
 
-Keep the Railway server at one replica: active game rooms and presence are held in server memory and are not shared between replicas. Set the `VITE_API_URL` Actions variable before rebuilding the frontend; it takes precedence over the legacy `VITE_SOCKET_URL` setting and the old Render default. Existing accounts in another deployment's database are not copied automatically; leave the old service and database intact until any required data migration is planned.
+The current Render free PostgreSQL database is temporary and displays its expiration date in the dashboard; upgrade it before that date to retain account data. Existing accounts stored in a different database are not copied automatically.
 
 ## Run locally
 
