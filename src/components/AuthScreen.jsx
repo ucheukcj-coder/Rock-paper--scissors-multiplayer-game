@@ -12,6 +12,7 @@ export default function AuthScreen({ onAuthenticated }) {
   const [verificationHint, setVerificationHint] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [mobileAuthOpen, setMobileAuthOpen] = useState(false)
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -81,7 +82,7 @@ export default function AuthScreen({ onAuthenticated }) {
   }
 
   return (
-    <main className="auth-page">
+    <main className={`auth-page${mobileAuthOpen ? ' show-mobile-auth' : ''}`}>
       <section className="auth-promo">
         <div className="auth-mark" aria-hidden="true">✳</div>
         <p className="eyebrow">The head-to-head arena</p>
@@ -90,10 +91,14 @@ export default function AuthScreen({ onAuthenticated }) {
         <div className="auth-orbit" aria-hidden="true">
           <span>✊</span><span>✋</span><span>✌</span>
         </div>
+        <button className="auth-mobile-continue" type="button" onClick={() => setMobileAuthOpen(true)}>
+          Sign in or create an account <span aria-hidden="true">↗</span>
+        </button>
         <div className="auth-promo-foot">ROCK · PAPER · SCISSORS</div>
       </section>
       <section className="auth-panel">
         <div className="auth-panel-top">
+          <button className="auth-mobile-back" type="button" onClick={() => setMobileAuthOpen(false)}>← Welcome</button>
           <span className="auth-logo">RPS<span>✳</span></span>
           <span className="auth-label">PLAYER ACCESS</span>
         </div>
