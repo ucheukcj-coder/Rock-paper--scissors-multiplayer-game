@@ -36,3 +36,9 @@ When SMTP is not configured, local verification codes are printed in the server 
 Use the App Password, not your regular Gmail password. Restart the server after changing `server/.env`. For a hosted deployment, set the same variables in the service's environment settings and redeploy. In production, `NODE_ENV=production` prevents local code logging when mail settings are missing. New accounts must verify their email before signing in; an unverified account can return to the code screen from sign-in and request another code. Usernames and email addresses are unique. Set `LOCAL_DATABASE_PATH` to use a different local embedded database directory.
 
 Passwords are hashed before storage. Never reuse a real password in development or commit environment files containing secrets.
+## Firebase and Resend authentication
+
+- Enable Email/Password or Google authentication in Firebase Console.
+- In **Authentication → Settings → Authorized domains**, add the GitHub Pages domain and the Render backend domain.
+- Configure `RESEND_API_KEY` and optionally `RESEND_FROM` in Render for custom 6-digit verification and password-reset emails.
+- Resend replaces direct Gmail SMTP when `RESEND_API_KEY` is configured. The existing SMTP variables remain as a local fallback.

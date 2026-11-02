@@ -93,6 +93,29 @@ function verificationHash(code) {
 }
 
 async function sendAccountCode(email, code, purpose) {
+  if (process.env.RESEND_API_KEY) {
+    const isPasswordReset = purpose === 'password reset'
+    const subject = isPasswordReset ? 'Your RPS Club password reset code' : 'Your RPS Club verification code'
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM || 'RPS Club <onboarding@resend.dev>',
+        to: [email],
+        subject,
+        text: `Your RPS Club ${purpose} code is ${code}. It expires in 15 minutes.`,
+      }),
+    })
+    if (!response.ok) {
+      const result = await response.text()
+      throw new Error(`Resend returned ${response.status}: ${result}`)
+    }
+    return 'email'
+  }
+
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM } = process.env
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASSWORD || !SMTP_FROM) {
     if (process.env.NODE_ENV === 'production') {
@@ -127,6 +150,7 @@ async function sendAccountCode(email, code, purpose) {
 }
 
 function smtpConfigured() {
+  if (process.env.RESEND_API_KEY) return true
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM } = process.env
   return Boolean(SMTP_HOST && SMTP_PORT && SMTP_USER && SMTP_PASSWORD && SMTP_FROM)
 }
