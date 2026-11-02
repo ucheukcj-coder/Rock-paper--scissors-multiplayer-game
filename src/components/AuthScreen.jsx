@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { apiRequest } from '../api'
+import { getIdToken, signInWithPopup } from 'firebase/auth'
+import { firebaseAuth, googleAuthProvider } from '../firebase'
 
 export default function AuthScreen({ onAuthenticated }) {
   const [isRegistering, setIsRegistering] = useState(false)
@@ -62,6 +64,26 @@ export default function AuthScreen({ onAuthenticated }) {
           setError('')
         } else {
           onAuthenticated(result)
+        }
+
+        async function handleGoogleSignIn() {
+          setError('')
+          setBusy(true)
+          try {
+            const credential = await signInWithPopup(firebaseAuth, googleAuthProvider)
+            const firebaseToken = await getIdToken(credential.user, true)
+            const session = await apiRequest('/auth/firebase-google', {
+              method: 'POST',
+              body: { firebaseToken },
+            })
+            onAuthenticated(session)
+          } catch (requestError) {
+            setError(requestError.code === 'auth/popup-closed-by-user'
+              ? 'Google sign-in was cancelled. Try again when you are ready.'
+              : requestError.message || 'Google sign-in could not be completed.')
+          } finally {
+            setBusy(false)
+          }
         }
       }
     } catch (requestError) {
@@ -280,6 +302,14 @@ export default function AuthScreen({ onAuthenticated }) {
               <span aria-hidden="true">↗</span>
             </button>
           </form>
+          {!isVerifying && !isResettingPassword && !isRequestingPasswordReset && (
+            <>
+              <div className="auth-divider"><span>or</span></div>
+              <button className="auth-google" type="button" disabled={busy} onClick={handleGoogleSignIn}>
+                <span aria-hidden="true">G</span> Continue with Google
+              </button>
+            </>
+          )}
           {isVerifying ? (
             <div className="auth-verification-actions">
               <button type="button" disabled={busy || !verificationSent} onClick={resendCode}>Resend code</button>

@@ -958,6 +958,12 @@ button:focus-visible, input:focus-visible { outline-color: var(--blue); }
 .auth-form input:focus { border-color: var(--blue); }
 .auth-submit { border-color: var(--blue); border-radius: 8px; background: var(--blue); }
 .auth-submit:hover:not(:disabled) { box-shadow: 0 4px 0 rgba(32, 35, 32, .15); }
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 18px 0 12px; color: var(--muted); font-size: 11px; }
+.auth-divider::before, .auth-divider::after { height: 1px; flex: 1; background: var(--line); content: ''; }
+.auth-google { display: flex; width: 100%; min-height: 48px; align-items: center; justify-content: center; gap: 10px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); cursor: pointer; font-weight: 700; }
+.auth-google:hover:not(:disabled) { border-color: var(--blue); }
+.auth-google:disabled { cursor: wait; opacity: .65; }
+.auth-google span { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; background: conic-gradient(#4285f4 0 25%, #34a853 25% 50%, #fbbc05 50% 75%, #ea4335 75%); color: white; font-family: Arial, sans-serif; font-size: 14px; }
 .auth-switch button, .auth-verification-actions button { color: var(--blue); }
 .auth-security-note { color: #7d7e75; }
 .verification-hint { border-color: #d9dfc1; background: #f0f3e1; color: #53613a; }

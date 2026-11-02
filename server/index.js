@@ -409,6 +409,67 @@ app.post('/api/auth/login', authLimiter, asyncRoute(async (req, res) => {
   res.json(createSession(user))
 }))
 
+app.post('/api/auth/firebase-google', authLimiter, asyncRoute(async (req, res) => {
+  const firebaseToken = typeof req.body?.firebaseToken === 'string'
+    ? req.body.firebaseToken.trim()
+    : ''
+  if (!firebaseToken) throw new ApiError(400, 'Google sign-in was not completed')
+
+  const firebaseProjectId = process.env.FIREBASE_PROJECT_ID || 'my-rps-app-34895'
+  const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(firebaseToken)}`)
+  const identity = await response.json()
+  if (
+    !response.ok ||
+    identity.iss !== 'https://securetoken.google.com/' + firebaseProjectId ||
+    identity.aud !== '1:743517976382:web:2f14c2ce1f48708a93de6f'
+  ) {
+    throw new ApiError(401, 'Google sign-in could not be verified')
+  }
+  if (!identity.user_id || !identity.email || identity.email_verified !== 'true') {
+    throw new ApiError(401, 'Your Google email could not be verified')
+  }
+
+  const email = emailFrom({ email: identity.email })
+  const { rows: existingFirebaseUsers } = await pool.query(
+    'SELECT id, username, email, email_verified, created_at FROM users WHERE firebase_uid = $1',
+    [identity.user_id],
+  )
+  let user = existingFirebaseUsers[0]
+  if (!user) {
+    const { rows: emailUsers } = await pool.query(
+      'SELECT id, username, email, email_verified, created_at FROM users WHERE email = $1',
+      [email],
+    )
+    user = emailUsers[0]
+    if (user) {
+      await pool.query('UPDATE users SET firebase_uid = $1, email_verified = true WHERE id = $2', [identity.user_id, user.id])
+    } else {
+      const emailName = email.split('@')[0].replace(/[^a-z0-9_]/gi, '_').toLowerCase()
+      let username = emailName.replace(/^_+|_+$/g, '').slice(0, 16) || 'player'
+      if (username.length < 3) username += '_player'
+      let suffix = 0
+      while (true) {
+        const candidate = suffix ? `${username.slice(0, 17)}${suffix}` : username
+        const { rows: taken } = await pool.query('SELECT 1 FROM users WHERE username = $1', [candidate])
+        if (!taken[0]) {
+          username = candidate
+          break
+        }
+        suffix += 1
+      }
+      const passwordHash = await bcrypt.hash(randomUUID(), 12)
+      const { rows: created } = await pool.query(
+        `INSERT INTO users (id, username, password_hash, email, email_verified, firebase_uid)
+         VALUES ($1, $2, $3, $4, true, $5)
+         RETURNING id, username, email, email_verified, created_at`,
+        [randomUUID(), username, passwordHash, email, identity.user_id],
+      )
+      user = created[0]
+    }
+  }
+  res.json(createSession(user))
+}))
+
 app.get('/api/auth/me', requireAuth, asyncRoute(async (req, res) => {
   const { rows } = await pool.query(
     'SELECT id, username, email, email_verified AS "emailVerified", created_at AS "createdAt" FROM users WHERE id = $1',
