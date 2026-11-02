@@ -32,9 +32,10 @@ const challenges = new Map()
 
 app.use(cors({ origin: clientOrigins }))
 app.use(express.json({ limit: '16kb' }))
+app.set('trust proxy', 1)
 app.get('/healthz', asyncRoute(async (_req, res) => {
   await pool.query('SELECT 1')
-  res.status(200).send('ok')
+  res.status(200).json({ status: 'ok', commit: 'd8b6105' })
 }))
 
 app.get('/api/debug/auth-schema', asyncRoute(async (_req, res) => {
