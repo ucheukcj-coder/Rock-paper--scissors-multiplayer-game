@@ -37,6 +37,16 @@ app.get('/healthz', asyncRoute(async (_req, res) => {
   res.status(200).send('ok')
 }))
 
+app.get('/api/debug/auth-schema', asyncRoute(async (_req, res) => {
+  const { rows } = await pool.query(`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'users'
+    ORDER BY ordinal_position
+  `)
+  res.json({ columns: rows.map(row => row.column_name) })
+}))
+
 class ApiError extends Error {
   constructor(status, message, details = {}) {
     super(message)
