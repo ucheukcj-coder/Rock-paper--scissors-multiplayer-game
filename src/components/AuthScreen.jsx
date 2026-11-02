@@ -66,25 +66,6 @@ export default function AuthScreen({ onAuthenticated }) {
           onAuthenticated(result)
         }
 
-        async function handleGoogleSignIn() {
-          setError('')
-          setBusy(true)
-          try {
-            const credential = await signInWithPopup(firebaseAuth, googleAuthProvider)
-            const firebaseToken = await getIdToken(credential.user, true)
-            const session = await apiRequest('/auth/firebase-google', {
-              method: 'POST',
-              body: { firebaseToken },
-            })
-            onAuthenticated(session)
-          } catch (requestError) {
-            setError(requestError.code === 'auth/popup-closed-by-user'
-              ? 'Google sign-in was cancelled. Try again when you are ready.'
-              : requestError.message || 'Google sign-in could not be completed.')
-          } finally {
-            setBusy(false)
-          }
-        }
       }
     } catch (requestError) {
       if (requestError.details?.verificationRequired && requestError.details.email) {
@@ -97,6 +78,26 @@ export default function AuthScreen({ onAuthenticated }) {
         return
       }
       setError(requestError.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setError('')
+    setBusy(true)
+    try {
+      const credential = await signInWithPopup(firebaseAuth, googleAuthProvider)
+      const firebaseToken = await getIdToken(credential.user, true)
+      const session = await apiRequest('/auth/firebase-google', {
+        method: 'POST',
+        body: { firebaseToken },
+      })
+      onAuthenticated(session)
+    } catch (requestError) {
+      setError(requestError.code === 'auth/popup-closed-by-user'
+        ? 'Google sign-in was cancelled. Try again when you are ready.'
+        : requestError.message || 'Google sign-in could not be completed.')
     } finally {
       setBusy(false)
     }
