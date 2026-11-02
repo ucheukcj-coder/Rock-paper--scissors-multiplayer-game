@@ -34,7 +34,7 @@ app.use(cors({ origin: clientOrigins }))
 app.use(express.json({ limit: '16kb' }))
 app.get('/healthz', asyncRoute(async (_req, res) => {
   await pool.query('SELECT 1')
-  res.status(200).json({ status: 'ok', commit: 'd8b6105' })
+  res.status(200).json({ status: 'ok', commit: '1b0abc9' })
 }))
 
 app.get('/api/debug/auth-schema', asyncRoute(async (_req, res) => {
@@ -234,7 +234,6 @@ const authLimiter = rateLimit({
   limit: 20,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
-  validate: { xForwardedForHeader: false },
 })
 
 app.post('/api/auth/register', authLimiter, asyncRoute(async (req, res) => {
@@ -427,7 +426,7 @@ app.post('/api/auth/reset-password', authLimiter, asyncRoute(async (req, res) =>
   res.json(createSession(updatedUsers[0]))
 }))
 
-app.post('/api/auth/login', authLimiter, asyncRoute(async (req, res) => {
+app.post('/api/auth/login', asyncRoute(async (req, res) => {
   const username = usernameFrom(req.body)
   const password = passwordFrom(req.body)
   const { rows } = await pool.query(
@@ -508,7 +507,7 @@ app.post('/api/debug/login-route-test', asyncRoute(async (req, res) => {
   }
 }))
 
-app.post('/api/auth/firebase-google', authLimiter, asyncRoute(async (req, res) => {
+app.post('/api/auth/firebase-google', asyncRoute(async (req, res) => {
   const firebaseToken = typeof req.body?.firebaseToken === 'string'
     ? req.body.firebaseToken.trim()
     : ''
