@@ -32,7 +32,6 @@ const challenges = new Map()
 
 app.use(cors({ origin: clientOrigins }))
 app.use(express.json({ limit: '16kb' }))
-app.set('trust proxy', 1)
 app.get('/healthz', asyncRoute(async (_req, res) => {
   await pool.query('SELECT 1')
   res.status(200).json({ status: 'ok', commit: 'd8b6105' })
@@ -235,6 +234,7 @@ const authLimiter = rateLimit({
   limit: 20,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
 })
 
 app.post('/api/auth/register', authLimiter, asyncRoute(async (req, res) => {
@@ -435,7 +435,7 @@ app.post('/api/auth/login', authLimiter, asyncRoute(async (req, res) => {
     [username],
   )
   const user = rows[0]
-  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+  if (!user || !user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
     throw new ApiError(401, 'Username or password is incorrect')
   }
   if (!user.email_verified) {
