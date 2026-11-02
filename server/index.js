@@ -446,6 +446,32 @@ app.post('/api/auth/login', authLimiter, asyncRoute(async (req, res) => {
   res.json(createSession(user))
 }))
 
+app.get('/api/debug/login-step', asyncRoute(async (_req, res) => {
+  try {
+    const lookup = await pool.query(
+      'SELECT id, username, email, password_hash, email_verified, created_at FROM users WHERE username = $1',
+      ['missing_user'],
+    )
+    let passwordValidation = 'user lookup succeeded; no password comparison expected'
+    if (lookup.rows[0]) {
+      passwordValidation = await bcrypt.compare('password123', lookup.rows[0].password_hash)
+    }
+    const session = createSession({
+      id: '00000000-0000-0000-0000-000000000000',
+      username: 'diagnostic_user',
+      email: null,
+      email_verified: true,
+    })
+    res.json({
+      lookupCount: lookup.rows.length,
+      passwordValidation,
+      sessionCreated: Boolean(session.token),
+    })
+  } catch (error) {
+    res.status(500).json({ diagnostic: error.message, stack: error.stack })
+  }
+}))
+
 app.post('/api/auth/firebase-google', authLimiter, asyncRoute(async (req, res) => {
   const firebaseToken = typeof req.body?.firebaseToken === 'string'
     ? req.body.firebaseToken.trim()
