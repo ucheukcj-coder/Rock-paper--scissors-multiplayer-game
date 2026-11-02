@@ -484,6 +484,29 @@ app.get('/api/debug/login-query', asyncRoute(async (_req, res) => {
   }
 }))
 
+app.post('/api/debug/login-route-test', asyncRoute(async (req, res) => {
+  try {
+    const username = usernameFrom(req.body)
+    const password = passwordFrom(req.body)
+    const { rows } = await pool.query(
+      'SELECT id, username, email, password_hash, email_verified, created_at FROM users WHERE username = $1',
+      [username],
+    )
+    const user = rows[0]
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+      return res.status(401).json({ message: 'Username or password is incorrect' })
+    }
+    res.json(createSession(user))
+  } catch (error) {
+    res.status(500).json({
+      errorType: error.constructor.name,
+      message: error.message,
+      status: error.status,
+      stack: error.stack,
+    })
+  }
+}))
+
 app.post('/api/auth/firebase-google', authLimiter, asyncRoute(async (req, res) => {
   const firebaseToken = typeof req.body?.firebaseToken === 'string'
     ? req.body.firebaseToken.trim()
