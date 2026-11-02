@@ -472,6 +472,18 @@ app.get('/api/debug/login-step', asyncRoute(async (_req, res) => {
   }
 }))
 
+app.get('/api/debug/login-query', asyncRoute(async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, username, email, password_hash, email_verified, created_at FROM users WHERE username = $1',
+      ['missing_user'],
+    )
+    res.json({ rows: rows.length, result: rows })
+  } catch (error) {
+    res.status(500).json({ message: error.message, stack: error.stack })
+  }
+}))
+
 app.post('/api/auth/firebase-google', authLimiter, asyncRoute(async (req, res) => {
   const firebaseToken = typeof req.body?.firebaseToken === 'string'
     ? req.body.firebaseToken.trim()
