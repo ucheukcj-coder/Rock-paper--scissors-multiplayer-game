@@ -32,7 +32,10 @@ const challenges = new Map()
 
 app.use(cors({ origin: clientOrigins }))
 app.use(express.json({ limit: '16kb' }))
-app.get('/healthz', (_req, res) => res.status(200).send('ok'))
+app.get('/healthz', asyncRoute(async (_req, res) => {
+  await pool.query('SELECT 1')
+  res.status(200).send('ok')
+}))
 
 class ApiError extends Error {
   constructor(status, message, details = {}) {
