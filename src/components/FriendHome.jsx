@@ -16,6 +16,7 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
   const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState('')
+  const [profileOpen, setProfileOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('play')
   const outgoingChallengeTimeoutRef = useRef(null)
 
@@ -188,9 +189,13 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
     ...requests.outgoing.map(item => item.user.id),
   ])
 
-  function navigateToSection(section) {
+  function navigateToSection(section, target) {
     setActiveSection(section)
-    setSearch(current => section === 'find' ? current : '')
+    if (target === 'profile') {
+      setProfileOpen(true)
+      return
+    }
+    document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   return (
@@ -198,45 +203,49 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
       <header className="home-header">
         <div className="home-brand"><span className="brand-mark">✳</span><div><strong>RPS CLUB</strong><small>THE HEAD-TO-HEAD ARENA</small></div></div>
         <div className="account-menu">
-          <button className="profile-trigger" onClick={() => navigateToSection('profile')} aria-label={`View profile for ${user.username}`}>
+          <button className="profile-trigger" onClick={() => navigateToSection('profile', 'profile')} aria-label={`View profile for ${user.username}`} aria-haspopup="dialog">
             <span className="account-avatar">{user.username.slice(0, 1).toUpperCase()}</span>
             <span className="account-name">@{user.username}</span>
+            <span className="profile-chevron" aria-hidden="true">⌄</span>
           </button>
           <button className="button-quiet" onClick={onSignOut}>Sign out</button>
         </div>
       </header>
 
+      {profileOpen && (
+        <div className="profile-overlay" onMouseDown={event => { if (event.target === event.currentTarget) setProfileOpen(false) }}>
+          <section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title">
+            <button className="profile-close" onClick={() => setProfileOpen(false)} aria-label="Close profile">×</button>
+            <p className="eyebrow">PLAYER CARD</p>
+            <div className="profile-dialog-head">
+              <div className="profile-avatar">{user.username.slice(0, 1).toUpperCase()}</div>
+              <div><h2 id="profile-title">@{user.username}</h2><p className="profile-handle">RPS CLUB PLAYER</p></div>
+            </div>
+            <div className="profile-stats">
+              <div><span>Total wins</span><strong>{user.totalWins ?? 0}</strong></div>
+              <div><span>Matches played</span><strong>{user.matchesPlayed ?? 0}</strong></div>
+            </div>
+            <div className="profile-info">
+              <div><span>Email address</span><strong>{user.email || 'Not available'}</strong></div>
+              <div><span>Email status</span><strong className="profile-verified"><i />{user.emailVerified === false ? 'Not verified' : 'Verified'}</strong></div>
+              <div><span>Member since</span><strong>{user.createdAt ? new Date(user.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'RPS Club player'}</strong></div>
+            </div>
+            <button className="profile-done" onClick={() => setProfileOpen(false)}>Done</button>
+          </section>
+        </div>
+      )}
+
       <div className="home-workspace">
         <aside className="home-sidebar" aria-label="Clubhouse navigation">
           <p className="eyebrow">YOUR CLUBHOUSE</p>
-          <button className={activeSection === 'play' ? 'is-active' : ''} onClick={() => navigateToSection('play')}><span aria-hidden="true">⌂</span>Play</button>
-          <button className={activeSection === 'find' ? 'is-active' : ''} onClick={() => navigateToSection('find')}><span aria-hidden="true">⌕</span>Find players</button>
-          <button className={activeSection === 'requests' ? 'is-active' : ''} onClick={() => navigateToSection('requests')}><span aria-hidden="true">♧</span>Requests{requests.incoming.length > 0 && <b>{requests.incoming.length}</b>}</button>
-          <button className={activeSection === 'profile' ? 'is-active' : ''} onClick={() => navigateToSection('profile')}><span aria-hidden="true">◉</span>My profile</button>
+          <button className={activeSection === 'play' ? 'is-active' : ''} onClick={() => navigateToSection('play', 'home-play')}><span aria-hidden="true">⌂</span>Play</button>
+          <button className={activeSection === 'find' ? 'is-active' : ''} onClick={() => navigateToSection('find', 'friend-search')}><span aria-hidden="true">⌕</span>Find players</button>
+          <button className={activeSection === 'requests' ? 'is-active' : ''} onClick={() => navigateToSection('requests', 'friend-requests')}><span aria-hidden="true">♧</span>Requests{requests.incoming.length > 0 && <b>{requests.incoming.length}</b>}</button>
+          <button className={activeSection === 'profile' ? 'is-active' : ''} onClick={() => navigateToSection('profile', 'profile')}><span aria-hidden="true">◉</span>My profile</button>
           <div className="sidebar-promo"><span aria-hidden="true">✊</span><strong>Good rivals.<br />Better friends.</strong><small>Keep it friendly in the club.</small><i><span className="presence-dot is-online" />You’re online</i></div>
         </aside>
         <div className="home-content">
-      {activeSection === 'profile' && (
-        <section className="profile-page">
-          <p className="eyebrow">YOUR PLAYER CARD</p>
-          <div className="profile-page-head">
-            <div className="profile-avatar">{user.username.slice(0, 1).toUpperCase()}</div>
-            <div><h1>@{user.username}</h1><p>RPS CLUB PLAYER</p></div>
-          </div>
-          <div className="profile-stats">
-            <div><span>Total wins</span><strong>{user.totalWins ?? 0}</strong></div>
-            <div><span>Matches played</span><strong>{user.matchesPlayed ?? 0}</strong></div>
-            <div><span>Friends</span><strong>{friends.length}</strong></div>
-            <div><span>Online now</span><strong>{friends.filter(friend => friend.online).length}</strong></div>
-          </div>
-          <div className="profile-info">
-            <div><span>Email address</span><strong>{user.email || 'Not available'}</strong></div>
-            <div><span>Email status</span><strong className="profile-verified"><i />{user.emailVerified === false ? 'Not verified' : 'Verified'}</strong></div>
-            <div><span>Member since</span><strong>{user.createdAt ? new Date(user.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'RPS Club player'}</strong></div>
-          </div>
-        </section>
-      )}
-      {activeSection === 'play' && <>
+
       <section className="home-welcome" id="home-play">
         <div>
           <p className="eyebrow">THE FRIENDLY RIVALRY</p>
@@ -247,7 +256,7 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
       </section>
 
       <section className="mode-cards" aria-label="Choose a game mode">
-        <button className="mode-card mode-friends" onClick={() => navigateToSection('find')}>
+        <button className="mode-card mode-friends" onClick={() => document.getElementById('friends-panel')?.scrollIntoView({ behavior: 'smooth' })}>
           <span className="mode-icon" aria-hidden="true">♧</span>
           <span className="mode-card-copy"><strong>Challenge a friend</strong><small>Find your friends and settle the score.</small></span>
           <span className="mode-arrow" aria-hidden="true">↗</span>
@@ -269,9 +278,8 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
           </div>
         </section>
       )}
-      </>}
 
-      {activeSection === 'find' && <section className="friends-panel" id="friends-panel">
+      <section className="friends-panel" id="friends-panel">
         <div className="friends-main">
           <div className="section-heading">
             <div><p className="eyebrow">YOUR PEOPLE</p><h2>Friends <span className="count-pill">{friends.length}</span></h2></div>
@@ -307,9 +315,7 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
           </div>
           {outgoingChallenge && <p className="challenge-status">Waiting for @{outgoingChallenge.username} to accept…</p>}
         </div>
-      </section>}
-      {activeSection === 'requests' && <section className="friends-panel requests-panel" id="friend-requests">
-        <aside className="requests-side requests-view">
+        <aside className="requests-side" id="friend-requests">
           <p className="eyebrow">SOCIAL</p>
           <h3>Friend requests <span className="count-pill">{requests.incoming.length}</span></h3>
           {requests.incoming.length ? requests.incoming.map(item => (
@@ -321,7 +327,7 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
           )) : <p className="requests-empty">No new requests.<br />You’re all caught up.</p>}
           {requests.outgoing.length > 0 && <p className="sent-requests">Sent requests: {requests.outgoing.map(item => `@${item.user.username}`).join(', ')}</p>}
         </aside>
-      </section>}
+      </section>
       <footer className="home-footer"><span>RPS CLUB</span><span>PLAY NICE. WIN FAIR.</span></footer>
         </div>
       </div>

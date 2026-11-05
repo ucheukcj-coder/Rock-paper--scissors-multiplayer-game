@@ -1052,6 +1052,13 @@ button:focus-visible, input:focus-visible { outline-color: var(--blue); }
 .profile-dialog > .eyebrow { color: var(--muted); }
 .profile-avatar { border: 0; border-radius: 20px; background: var(--lime); box-shadow: none; color: var(--ink); }
 .profile-dialog h2 { color: var(--ink); }
+.profile-dialog-head { display: flex; align-items: center; gap: 14px; margin: 18px 0 16px; text-align: left; }
+.profile-dialog-head .profile-avatar { width: 58px; height: 58px; flex: 0 0 auto; margin: 0; border-radius: 14px; font-size: 24px; }
+.profile-dialog-head h2 { font-size: 21px; }
+.profile-dialog-head .profile-handle { margin: 5px 0 0; }
+.profile-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.profile-stats div { min-width: 0; align-content: center; min-height: 78px; text-align: left; }
+.profile-stats strong { line-height: 1; }
 .profile-handle { color: var(--muted); }
 .profile-info { border-color: var(--line); background: #faf9f3; }
 .profile-info > div { border-color: #e8e5dc; }
