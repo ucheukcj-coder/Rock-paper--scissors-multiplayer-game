@@ -1060,8 +1060,17 @@ button:focus-visible, input:focus-visible { outline-color: var(--blue); }
 .profile-info .profile-verified { color: #536b53; }
 .profile-done { border-color: var(--blue); border-radius: 7px; background: var(--blue); color: white; }
 .profile-done:hover { box-shadow: 0 3px 0 rgba(32, 35, 32, .15); }
-
-.app-shell { width: min(calc(100% - 56px), 1440px); padding-top: 16px; }
+.profile-page { min-height: 520px; padding: 28px; border: 1px solid var(--line); border-radius: 11px; background: var(--white); }
+.profile-page-head { display: flex; align-items: center; gap: 18px; margin: 18px 0 24px; }
+.profile-page-head h1 { margin: 0; font-size: 30px; }
+.profile-page-head p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+.profile-page .profile-avatar { flex: 0 0 auto; }
+.profile-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; }
+.profile-stats div { display: grid; gap: 8px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #faf9f3; }
+.profile-stats span { color: var(--muted); font-size: 11px; }
+.profile-stats strong { font-size: 28px; }
+.requests-panel { grid-template-columns: 1fr; }
+.requests-panel .requests-side { width: 100%; max-width: 560px; }
 .app-header { min-height: 60px; padding: 0 0 12px; border-color: var(--line); }
 .brand-mark { background: var(--lime); color: var(--ink); }
 .brand-kicker, .connection-state { color: var(--muted); }

@@ -214,6 +214,7 @@ function createSession(user) {
       username: user.username,
       email: user.email || null,
       emailVerified: user.email_verified ?? true,
+      totalWins: user.total_wins ?? 0,
       createdAt: user.created_at || null,
     },
   }
@@ -509,11 +510,19 @@ app.post('/api/auth/firebase-session', authLimiter, asyncRoute(async (req, res) 
 
 app.get('/api/auth/me', requireAuth, asyncRoute(async (req, res) => {
   const { rows } = await pool.query(
-    'SELECT id, username, email, email_verified AS "emailVerified", created_at AS "createdAt" FROM users WHERE id = $1',
+    'SELECT id, username, email, email_verified AS "emailVerified", total_wins AS "totalWins", created_at AS "createdAt" FROM users WHERE id = $1',
     [req.user.id],
   )
   if (!rows[0]) throw new ApiError(401, 'Your account could not be found')
   res.json(rows[0])
+}))
+
+app.post('/api/matches/win', requireAuth, asyncRoute(async (req, res) => {
+  const { rows } = await pool.query(
+    'UPDATE users SET total_wins = total_wins + 1 WHERE id = $1 RETURNING total_wins AS "totalWins"',
+    [req.user.id],
+  )
+  res.json(rows[0] || { totalWins: 0 })
 }))
 
 app.get('/api/users/search', requireAuth, asyncRoute(async (req, res) => {

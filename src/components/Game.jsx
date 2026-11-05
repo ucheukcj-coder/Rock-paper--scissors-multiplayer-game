@@ -283,7 +283,12 @@ export default function Game() {
     }
     if (roundResult === 'You Win') setUserScore(score => {
       const next = score + 1
-      if (next >= WIN_SCORE) setGameOver(true)
+      if (next >= WIN_SCORE) {
+        setGameOver(true)
+        void apiRequest('/matches/win', { token: authToken, method: 'POST' })
+          .then(result => setAuthUser(current => current ? { ...current, totalWins: result.totalWins } : current))
+          .catch(error => console.error('Could not record match win:', error.message))
+      }
       return next
     })
     else if (roundResult === 'You Lose') setComputerScore(score => {

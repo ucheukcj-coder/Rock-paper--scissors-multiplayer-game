@@ -35,6 +35,7 @@ export async function initializeDatabase() {
       verification_code_expires_at timestamptz,
       password_reset_code_hash varchar(64),
       password_reset_code_expires_at timestamptz,
+      total_wins integer NOT NULL DEFAULT 0,
       created_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT users_username_format CHECK (username ~ '^[a-z0-9_]{3,20}$')
     )`,
@@ -45,6 +46,7 @@ export async function initializeDatabase() {
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code_expires_at timestamptz',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_code_hash varchar(64)',
     'ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_code_expires_at timestamptz',
+    'ALTER TABLE users ADD COLUMN IF NOT EXISTS total_wins integer NOT NULL DEFAULT 0',
     'CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx ON users(email) WHERE email IS NOT NULL',
     'CREATE UNIQUE INDEX IF NOT EXISTS users_firebase_uid_unique_idx ON users(firebase_uid) WHERE firebase_uid IS NOT NULL',
     `CREATE TABLE IF NOT EXISTS friend_requests (
