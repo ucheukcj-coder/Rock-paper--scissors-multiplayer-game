@@ -225,6 +225,7 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
           </div>
           <div className="profile-stats">
             <div><span>Total wins</span><strong>{user.totalWins ?? 0}</strong></div>
+            <div><span>Matches played</span><strong>{user.matchesPlayed ?? 0}</strong></div>
             <div><span>Friends</span><strong>{friends.length}</strong></div>
             <div><span>Online now</span><strong>{friends.filter(friend => friend.online).length}</strong></div>
           </div>

@@ -33,6 +33,7 @@ export default function Game() {
   const socketRef = React.useRef(null)
   const roomIdRef = React.useRef('')
   const opponentSeenRef = React.useRef(false)
+  const matchRecordedRef = React.useRef(false)
   const playerNameRef = React.useRef(localStorage.getItem('playerName') || '')
   const [authToken, setAuthToken] = useState(() => localStorage.getItem('authToken') || '')
   const [authUser, setAuthUser] = useState(null)
@@ -285,17 +286,30 @@ export default function Game() {
       const next = score + 1
       if (next >= WIN_SCORE) {
         setGameOver(true)
-        void apiRequest('/matches/win', { token: authToken, method: 'POST' })
-          .then(result => setAuthUser(current => current ? { ...current, totalWins: result.totalWins } : current))
-          .catch(error => console.error('Could not record match win:', error.message))
+        recordCompletedMatch(true)
       }
       return next
     })
     else if (roundResult === 'You Lose') setComputerScore(score => {
       const next = score + 1
-      if (next >= WIN_SCORE) setGameOver(true)
+      if (next >= WIN_SCORE) {
+        setGameOver(true)
+        recordCompletedMatch(false)
+      }
       return next
     })
+  }
+
+  function recordCompletedMatch(won) {
+    if (matchRecordedRef.current) return
+    matchRecordedRef.current = true
+    void apiRequest('/matches/complete', { token: authToken, method: 'POST', body: { won } })
+      .then(result => setAuthUser(current => current ? {
+        ...current,
+        totalWins: result.totalWins,
+        matchesPlayed: result.matchesPlayed,
+      } : current))
+      .catch(error => console.error('Could not record completed match:', error.message))
   }
 
   function handleJoin(room) {
@@ -341,6 +355,7 @@ export default function Game() {
   }
 
   function handleReset() {
+    matchRecordedRef.current = false
     setUserChoice('')
     setComputerChoice('')
     setResult('')

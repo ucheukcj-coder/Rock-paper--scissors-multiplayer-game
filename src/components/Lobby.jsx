@@ -14,7 +14,12 @@ export default function Lobby({ onJoin, onPlayComputer }) {
     inviteUrl.searchParams.set('room', normalizedRoomId)
     window.history.replaceState({}, '', inviteUrl)
     onJoin(normalizedRoomId, normalizedPlayerName)
+
+
+    
   }
+
+
 
   return (
     <form className="lobby-form" onSubmit={handleSubmit}>
