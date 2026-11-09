@@ -1029,15 +1029,17 @@ button:focus-visible, input:focus-visible { outline-color: var(--blue); }
 .friend-search { border-color: #cccac0; border-radius: 8px; background: #fffefa; }
 .friend-search input { color: var(--ink); }
 .friend-search input::placeholder { color: #9b9b91; }
-.store-panel, .premium-panel { margin: 18px 0 20px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--white); }
-.store-header, .premium-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.store-header h2, .premium-header h2 { margin: 6px 0 0; font-size: clamp(20px, 2vw, 28px); }
+.store-panel { margin: 18px 0 20px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--white); }
+.store-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.store-header h2 { margin: 6px 0 0; font-size: clamp(20px, 2vw, 28px); }
 .coin-balance { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: #f8f5ee; }
 .coin-balance span { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 9px; text-transform: uppercase; }
 .coin-balance strong { font-size: 20px; }
 .store-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-top: 18px; }
 .store-card { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #faf9f4; }
-.store-card.premium-card { background: linear-gradient(180deg, #f9f7ee, #f2f1ea); }
+.store-card.free-card { border-color: #dfe6c8; background: linear-gradient(180deg, #fbfcf6, #f0f4e2); }
+.store-card.premium-card { border-color: #d1c5ff; background: linear-gradient(180deg, #f8f5ff, #efe8ff); box-shadow: inset 0 0 0 1px rgba(124, 104, 255, .12); }
+.store-card.unlocked-card { border-color: #bbd98b; }
 .store-thumb { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); }
 .store-thumb img { display: block; width: 100%; height: 120px; object-fit: cover; }
 .card-badge { position: absolute; top: 10px; right: 10px; padding: 5px 8px; border-radius: 999px; background: rgba(23, 25, 22, .78); color: #fffefa; font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: .04em; text-transform: uppercase; }
@@ -1049,14 +1051,6 @@ button:focus-visible, input:focus-visible { outline-color: var(--blue); }
 .owned-pill { background: #e7f0dc; color: #3b5d38; }
 .locked-pill { background: #ece9df; color: #65675d; }
 .store-card .button-primary, .store-card .button-secondary { width: 100%; }
-.premium-body { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(200px, .8fr); gap: 18px; margin-top: 18px; }
-.premium-copy { display: grid; gap: 12px; }
-.premium-copy p { margin: 0; color: var(--muted); }
-.premium-copy ul { display: grid; gap: 8px; margin: 0; padding-left: 20px; color: var(--ink); }
-.premium-badge { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: #efeef8; color: var(--ink); font-family: 'DM Mono', monospace; font-size: 9px; text-transform: uppercase; }
-.premium-card-box { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: linear-gradient(180deg, #f3f4ef, #f8f5ee); }
-.premium-card-box h3 { margin: 0; }
-.premium-card-box p { margin: 0; color: var(--muted); }
 .search-results { border-color: var(--line); border-radius: 8px; background: var(--white); }
 .friend-row { border-color: #ece9df; }
 .friend-avatar { border-color: #d6d6cd; background: #eeede5; color: var(--ink); }

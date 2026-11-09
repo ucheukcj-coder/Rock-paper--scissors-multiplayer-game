@@ -26,17 +26,12 @@ const PORT = Number(process.env.PORT || 3000)
 const QUICK_REACTIONS = new Set(['👏', '😮', '😂', '👀'])
 const GIF_REACTIONS = new Set(['clap', 'wow', 'dance', 'thinking', 'fireworks', 'surprise'])
 const APPROVED_GIFS = [
-  { id: 'clap', name: 'Clap', category: 'Celebration', itemType: 'gif', price: 20, premium: false, imageUrl: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif', tags: ['clap', 'celebrate', 'cheer'] },
-  { id: 'wow', name: 'Wow', category: 'Reaction', itemType: 'gif', price: 18, premium: false, imageUrl: 'https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif', tags: ['wow', 'shock', 'reaction'] },
-  { id: 'dance', name: 'Dance', category: 'Party', itemType: 'gif', price: 30, premium: false, imageUrl: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif', tags: ['dance', 'party', 'fun'] },
-  { id: 'thinking', name: 'Thinking', category: 'Brainy', itemType: 'gif', price: 22, premium: false, imageUrl: 'https://media.giphy.com/media/3o7aD2saalBwwftBIY/giphy.gif', tags: ['thinking', 'brainy', 'plan'] },
-  { id: 'fireworks', name: 'Fireworks', category: 'Premium', itemType: 'pack', price: 0, premium: true, imageUrl: 'https://media.giphy.com/media/26BRv0ThflsHCqDrG/giphy.gif', tags: ['premium', 'fireworks', 'celebrate'] },
-  { id: 'surprise', name: 'Surprise', category: 'Premium', itemType: 'gif', price: 0, premium: true, imageUrl: 'https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif', tags: ['premium', 'surprise', 'shock'] },
-]
-const PREMIUM_BENEFITS = [
-  'Access to premium GIF reactions and packs',
-  'Priority reaction slots in high-energy matches',
-  'Exclusive lineup of celebration and surprise actions',
+  { id: 'clap', name: 'Clap', category: 'Celebration', itemType: 'gif', price: 0, premium: false, unlockWins: 3, imageUrl: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif', tags: ['clap', 'celebrate', 'cheer'] },
+  { id: 'wow', name: 'Wow', category: 'Reaction', itemType: 'gif', price: 0, premium: false, unlockWins: 6, imageUrl: 'https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif', tags: ['wow', 'shock', 'reaction'] },
+  { id: 'dance', name: 'Dance', category: 'Party', itemType: 'gif', price: 0, premium: false, unlockWins: 10, imageUrl: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif', tags: ['dance', 'party', 'fun'] },
+  { id: 'thinking', name: 'Thinking', category: 'Brainy', itemType: 'gif', price: 0, premium: false, unlockWins: 14, imageUrl: 'https://media.giphy.com/media/3o7aD2saalBwwftBIY/giphy.gif', tags: ['thinking', 'brainy', 'plan'] },
+  { id: 'fireworks', name: 'Fireworks', category: 'Premium', itemType: 'pack', price: 0, premium: true, unlockWins: 22, imageUrl: 'https://media.giphy.com/media/26BRv0ThflsHCqDrG/giphy.gif', tags: ['premium', 'fireworks', 'celebrate'] },
+  { id: 'surprise', name: 'Surprise', category: 'Premium', itemType: 'gif', price: 0, premium: true, unlockWins: 30, imageUrl: 'https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif', tags: ['premium', 'surprise', 'shock'] },
 ]
 const MOVE_TIMER_MS = 12_000
 const CHOICES = new Set(['Rock', 'Paper', 'Scissors'])
@@ -573,52 +568,37 @@ app.post('/api/matches/complete', requireAuth, asyncRoute(async (req, res) => {
 
 app.get('/api/store/catalog', requireAuth, asyncRoute(async (req, res) => {
   const { rows } = await pool.query(
-    `SELECT g.id, g.name, g.category, g.item_type AS "itemType", g.price, g.premium, g.image_url AS "imageUrl",
-            g.preview_url AS "previewUrl", g.tags,
-            CASE WHEN i.user_id IS NOT NULL THEN true ELSE false END AS owned,
-            CASE WHEN u.equipped_gif_id = g.id THEN true ELSE false END AS equipped
-     FROM gif_catalog g
-     LEFT JOIN user_gif_inventory i ON i.user_id = $1 AND i.gif_id = g.id
-     LEFT JOIN users u ON u.id = $1
-     ORDER BY g.premium ASC, g.price ASC, g.name ASC`,
+    `SELECT u.total_wins AS "totalWins", u.equipped_gif_id AS "equippedGifId",
+            i.gif_id AS "ownedGifId"
+     FROM users u
+     LEFT JOIN user_gif_inventory i ON i.user_id = u.id
+     WHERE u.id = $1`,
     [req.user.id],
   )
-  res.json({ items: rows.map(item => ({ ...item, owned: Boolean(item.owned), equipped: Boolean(item.equipped) })) })
-}))
-
-app.get('/api/store/premium', requireAuth, asyncRoute(async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT is_premium AS "isPremium", premium_since AS "premiumSince", coins FROM users WHERE id = $1`,
-    [req.user.id],
-  )
-  const user = rows[0]
-  res.json({
-    isPremium: Boolean(user?.isPremium),
-    premiumSince: user?.premiumSince || null,
-    benefits: PREMIUM_BENEFITS,
+  const user = rows[0] || {}
+  const ownedMap = new Map((rows || []).filter(item => item.ownedGifId).map(item => [item.ownedGifId, true]))
+  const items = APPROVED_GIFS.map(gif => {
+    const unlockWins = gif.unlockWins ?? 0
+    const unlocked = (user.totalWins ?? 0) >= unlockWins
+    const owned = unlocked || Boolean(ownedMap.has(gif.id))
+    const equipped = user.equippedGifId === gif.id
+    return {
+      id: gif.id,
+      name: gif.name,
+      category: gif.category,
+      itemType: gif.itemType,
+      price: 0,
+      premium: Boolean(gif.premium),
+      unlockWins,
+      unlocked,
+      owned,
+      equipped,
+      imageUrl: gif.imageUrl,
+      previewUrl: gif.imageUrl,
+      tags: gif.tags,
+    }
   })
-}))
-
-app.post('/api/store/premium/upgrade', requireAuth, asyncRoute(async (req, res) => {
-  const providerVerified = req.body?.paymentVerified === true || req.body?.verified === true
-  if (!providerVerified) {
-    throw new ApiError(400, 'Premium access requires verified authorization from a payment provider.')
-  }
-  const { rows } = await pool.query(
-    `UPDATE users
-     SET is_premium = true,
-         premium_since = COALESCE(premium_since, now())
-     WHERE id = $1
-     RETURNING id, username, is_premium AS "isPremium", premium_since AS "premiumSince", coins, equipped_gif_id AS "equippedGifId"`,
-    [req.user.id],
-  )
-  if (!rows[0]) throw new ApiError(404, 'Your account could not be found')
-  res.json({
-    ok: true,
-    isPremium: true,
-    premiumSince: rows[0].premiumSince,
-    message: 'Premium access is active.',
-  })
+  res.json({ items: items.sort((left, right) => Number(left.premium) - Number(right.premium) || left.unlockWins - right.unlockWins || left.name.localeCompare(right.name)) })
 }))
 
 app.post('/api/store/gifs/:gifId/purchase', requireAuth, asyncRoute(async (req, res) => {
@@ -937,25 +917,22 @@ io.on('connection', (socket) => {
       acknowledge({ ok: false, message: 'You must be in the active room to send a GIF.' })
       return
     }
-    const gif = APPROVED_GIFS.find(item => item.id === gifId)
+      const gif = APPROVED_GIFS.find(item => item.id === gifId)
     if (!gif) {
       acknowledge({ ok: false, message: 'That GIF is not allowed in this room.' })
       return
     }
     const { rows: accessRows } = await pool.query(
-      `SELECT u.is_premium AS "isPremium", i.gif_id AS "ownedGifId"
-       FROM users u
-       LEFT JOIN user_gif_inventory i ON i.user_id = u.id AND i.gif_id = $2
-       WHERE u.id = $1`,
-      [user.id, gif.id],
+      `SELECT total_wins AS "totalWins", equipped_gif_id AS "equippedGifId"
+       FROM users
+       WHERE id = $1`,
+      [user.id],
     )
     const account = accessRows[0]
-    if (gif.premium && !(account?.isPremium)) {
-      acknowledge({ ok: false, message: 'Premium access is required to use that GIF.' })
-      return
-    }
-    if (!gif.premium && !account?.ownedGifId) {
-      acknowledge({ ok: false, message: 'You do not own that GIF yet.' })
+    const wins = Number(account?.totalWins || 0)
+    const unlockWins = gif.unlockWins ?? 0
+    if (wins < unlockWins) {
+      acknowledge({ ok: false, message: `You need ${unlockWins} wins to unlock ${gif.name}.` })
       return
     }
     if (Date.now() - (socket.data.lastReactionAt || 0) < 800) {

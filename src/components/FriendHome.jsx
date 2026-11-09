@@ -19,7 +19,6 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
   const [busyId, setBusyId] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
   const [shopItems, setShopItems] = useState([])
-  const [premiumInfo, setPremiumInfo] = useState({ isPremium: false, benefits: [] })
   const [activeSection, setActiveSection] = useState('play')
   const outgoingChallengeTimeoutRef = useRef(null)
 
@@ -37,12 +36,8 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
 
   const refreshStore = useCallback(async () => {
     try {
-      const [catalog, premium] = await Promise.all([
-        apiRequest('/store/catalog', { token }),
-        apiRequest('/store/premium', { token }),
-      ])
+      const catalog = await apiRequest('/store/catalog', { token })
       setShopItems(catalog.items || [])
-      setPremiumInfo(premium)
     } catch (requestError) {
       setError(requestError.message)
     }
@@ -234,36 +229,14 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
 
   async function handleShopAction(item) {
     try {
-      if (item.owned) {
+      if (item.owned || item.unlocked) {
         const result = await apiRequest(`/store/gifs/${item.id}/${item.equipped ? 'unequip' : 'equip'}`, { token, method: 'POST' })
         await refreshAccount()
         await refreshStore()
         setNotice(result.message || `${item.name} ${item.equipped ? 'was unequipped' : 'is equipped'}.`)
         return
       }
-      if (item.premium) {
-        setNotice('Premium GIFs unlock with a Premium membership.')
-        return
-      }
-      const result = await apiRequest(`/store/gifs/${item.id}/purchase`, { token, method: 'POST' })
-      await refreshAccount()
-      await refreshStore()
-      setNotice(result.message || `${item.name} was added to your reaction collection.`)
-    } catch (requestError) {
-      setError(requestError.message)
-    }
-  }
-
-  async function handleUpgradePremium() {
-    try {
-      const result = await apiRequest('/store/premium/upgrade', {
-        token,
-        method: 'POST',
-        body: { paymentVerified: true, provider: 'demo' },
-      })
-      await refreshAccount()
-      await refreshStore()
-      setNotice(result.message || 'Premium access is active.')
+      setNotice(`Reach ${item.unlockWins} wins to unlock ${item.name}.`)
     } catch (requestError) {
       setError(requestError.message)
     }
@@ -355,64 +328,35 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
       <section className="store-panel" id="gif-shop">
         <div className="store-header">
           <div>
-            <p className="eyebrow">GIF SHOP</p>
-            <h2>Build your reaction pack</h2>
+            <p className="eyebrow">GIF STORE</p>
+            <h2>Earn your reaction pack</h2>
           </div>
-          <div className="coin-balance"><span>Coins</span><strong>{currentUser.coins ?? 0}</strong></div>
+          <div className="coin-balance"><span>Wins</span><strong>{currentUser.totalWins ?? 0}</strong></div>
         </div>
         <div className="store-grid">
           {shopItems.map(item => (
-            <article key={item.id} className={`store-card ${item.premium ? 'premium-card' : ''} ${item.owned ? 'owned-card' : ''}`}>
+            <article key={item.id} className={`store-card ${item.premium ? 'premium-card' : 'free-card'} ${item.unlocked ? 'unlocked-card' : ''}`}>
               <div className="store-thumb">
                 <img src={item.imageUrl} alt={item.name} />
-                <span className="card-badge">{item.premium ? 'Premium' : item.itemType === 'pack' ? 'Pack' : 'GIF'}</span>
+                <span className="card-badge">{item.premium ? 'Premium' : 'Free'}</span>
               </div>
               <div className="store-card-body">
                 <p className="store-category">{item.category}</p>
                 <h3>{item.name}</h3>
                 <div className="store-row">
-                  <span>{item.premium ? 'Premium only' : `${item.price} coins`}</span>
-                  {item.owned ? <span className="owned-pill">Owned</span> : <span className="locked-pill">Locked</span>}
+                  <span>{item.unlocked ? 'Unlocked' : `Unlock at ${item.unlockWins} wins`}</span>
+                  {item.unlocked ? <span className="owned-pill">Ready</span> : <span className="locked-pill">Locked</span>}
                 </div>
                 <button
-                  className={item.owned ? 'button-secondary' : 'button-primary'}
+                  className={item.unlocked ? 'button-secondary' : 'button-primary'}
                   type="button"
                   onClick={() => handleShopAction(item)}
                 >
-                  {item.owned ? (item.equipped ? 'Unequip' : 'Equip') : item.premium ? 'Upgrade premium' : `Buy for ${item.price}`}
+                  {item.unlocked ? (item.equipped ? 'Unequip' : 'Equip') : `Unlock at ${item.unlockWins} wins`}
                 </button>
               </div>
             </article>
           ))}
-        </div>
-      </section>
-
-      <section className="premium-panel" id="premium-shop">
-        <div className="premium-header">
-          <div>
-            <p className="eyebrow">PREMIUM</p>
-            <h2>Upgrade to Premium</h2>
-          </div>
-          <div className="premium-badge">{premiumInfo.isPremium ? 'Active' : 'Offline'}</div>
-        </div>
-        <div className="premium-body">
-          <div className="premium-copy">
-            <p>Unlock premium-only GIFs, faster access, and a more expressive match setup.</p>
-            <ul>
-              {(premiumInfo.benefits?.length ? premiumInfo.benefits : [
-                'Premium GIF reactions and packs',
-                'Exclusive match moments and premium pack access',
-                'More expressive reactions for every round',
-              ]).map(item => <li key={item}>{item}</li>)}
-            </ul>
-          </div>
-          <div className="premium-card-box">
-            <h3>Premium access</h3>
-            <p>Paywall is ready for your billing provider; the current demo flow verifies a secure upgrade before granting access.</p>
-            <button className="button-primary" type="button" onClick={handleUpgradePremium} disabled={premiumInfo.isPremium}>
-              {premiumInfo.isPremium ? 'Premium active' : 'Upgrade to Premium'}
-            </button>
-          </div>
         </div>
       </section>
 
