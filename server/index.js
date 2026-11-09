@@ -24,6 +24,21 @@ const clientOrigins = process.env.CLIENT_ORIGIN
 const io = new Server(server, { cors: { origin: clientOrigins } })
 const PORT = Number(process.env.PORT || 3000)
 const QUICK_REACTIONS = new Set(['👏', '😮', '😂', '👀'])
+const GIF_REACTIONS = new Set(['clap', 'wow', 'dance', 'thinking', 'fireworks', 'surprise'])
+const APPROVED_GIFS = [
+  { id: 'clap', name: 'Clap', category: 'Celebration', itemType: 'gif', price: 20, premium: false, imageUrl: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif', tags: ['clap', 'celebrate', 'cheer'] },
+  { id: 'wow', name: 'Wow', category: 'Reaction', itemType: 'gif', price: 18, premium: false, imageUrl: 'https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif', tags: ['wow', 'shock', 'reaction'] },
+  { id: 'dance', name: 'Dance', category: 'Party', itemType: 'gif', price: 30, premium: false, imageUrl: 'https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif', tags: ['dance', 'party', 'fun'] },
+  { id: 'thinking', name: 'Thinking', category: 'Brainy', itemType: 'gif', price: 22, premium: false, imageUrl: 'https://media.giphy.com/media/3o7aD2saalBwwftBIY/giphy.gif', tags: ['thinking', 'brainy', 'plan'] },
+  { id: 'fireworks', name: 'Fireworks', category: 'Premium', itemType: 'pack', price: 0, premium: true, imageUrl: 'https://media.giphy.com/media/26BRv0ThflsHCqDrG/giphy.gif', tags: ['premium', 'fireworks', 'celebrate'] },
+  { id: 'surprise', name: 'Surprise', category: 'Premium', itemType: 'gif', price: 0, premium: true, imageUrl: 'https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif', tags: ['premium', 'surprise', 'shock'] },
+]
+const PREMIUM_BENEFITS = [
+  'Access to premium GIF reactions and packs',
+  'Priority reaction slots in high-energy matches',
+  'Exclusive lineup of celebration and surprise actions',
+]
+const MOVE_TIMER_MS = 12_000
 const CHOICES = new Set(['Rock', 'Paper', 'Scissors'])
 const rooms = new Map()
 const authorizedRooms = new Map()
@@ -208,7 +223,7 @@ function queueAccountCodeDelivery({ email, code, purpose, userId, codeHash }) {
 
 function createSession(user) {
   return {
-    token:     jwt.sign({ sub: user.id, username: user.username }, signingSecret, { expiresIn: '7d' }),
+    token: jwt.sign({ sub: user.id, username: user.username }, signingSecret, { expiresIn: '7d' }),
     user: {
       id: user.id,
       username: user.username,
@@ -216,8 +231,31 @@ function createSession(user) {
       emailVerified: user.email_verified ?? true,
       totalWins: user.total_wins ?? 0,
       matchesPlayed: user.matches_played ?? 0,
+      coins: user.coins ?? 200,
+      isPremium: user.is_premium ?? false,
+      premiumSince: user.premium_since || null,
+      equippedGifId: user.equipped_gif_id || null,
       createdAt: user.created_at || null,
     },
+  }
+}
+
+async function seedGifCatalog() {
+  for (const gif of APPROVED_GIFS) {
+    await pool.query(
+      `INSERT INTO gif_catalog (id, name, category, item_type, price, premium, image_url, preview_url, tags)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         category = EXCLUDED.category,
+         item_type = EXCLUDED.item_type,
+         price = EXCLUDED.price,
+         premium = EXCLUDED.premium,
+         image_url = EXCLUDED.image_url,
+         preview_url = EXCLUDED.preview_url,
+         tags = EXCLUDED.tags`,
+      [gif.id, gif.name, gif.category, gif.itemType, gif.price, gif.premium, gif.imageUrl, gif.imageUrl, gif.tags],
+    )
   }
 }
 
@@ -511,7 +549,9 @@ app.post('/api/auth/firebase-session', authLimiter, asyncRoute(async (req, res) 
 
 app.get('/api/auth/me', requireAuth, asyncRoute(async (req, res) => {
   const { rows } = await pool.query(
-    'SELECT id, username, email, email_verified AS "emailVerified", total_wins AS "totalWins", matches_played AS "matchesPlayed", created_at AS "createdAt" FROM users WHERE id = $1',
+    `SELECT id, username, email, email_verified AS "emailVerified", total_wins AS "totalWins", matches_played AS "matchesPlayed",
+            coins, is_premium AS "isPremium", premium_since AS "premiumSince", equipped_gif_id AS "equippedGifId", created_at AS "createdAt"
+     FROM users WHERE id = $1`,
     [req.user.id],
   )
   if (!rows[0]) throw new ApiError(401, 'Your account could not be found')
@@ -529,6 +569,156 @@ app.post('/api/matches/complete', requireAuth, asyncRoute(async (req, res) => {
     [req.user.id, won],
   )
   res.json(rows[0] || { totalWins: 0, matchesPlayed: 0 })
+}))
+
+app.get('/api/store/catalog', requireAuth, asyncRoute(async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT g.id, g.name, g.category, g.item_type AS "itemType", g.price, g.premium, g.image_url AS "imageUrl",
+            g.preview_url AS "previewUrl", g.tags,
+            CASE WHEN i.user_id IS NOT NULL THEN true ELSE false END AS owned,
+            CASE WHEN u.equipped_gif_id = g.id THEN true ELSE false END AS equipped
+     FROM gif_catalog g
+     LEFT JOIN user_gif_inventory i ON i.user_id = $1 AND i.gif_id = g.id
+     LEFT JOIN users u ON u.id = $1
+     ORDER BY g.premium ASC, g.price ASC, g.name ASC`,
+    [req.user.id],
+  )
+  res.json({ items: rows.map(item => ({ ...item, owned: Boolean(item.owned), equipped: Boolean(item.equipped) })) })
+}))
+
+app.get('/api/store/premium', requireAuth, asyncRoute(async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT is_premium AS "isPremium", premium_since AS "premiumSince", coins FROM users WHERE id = $1`,
+    [req.user.id],
+  )
+  const user = rows[0]
+  res.json({
+    isPremium: Boolean(user?.isPremium),
+    premiumSince: user?.premiumSince || null,
+    benefits: PREMIUM_BENEFITS,
+  })
+}))
+
+app.post('/api/store/premium/upgrade', requireAuth, asyncRoute(async (req, res) => {
+  const providerVerified = req.body?.paymentVerified === true || req.body?.verified === true
+  if (!providerVerified) {
+    throw new ApiError(400, 'Premium access requires verified authorization from a payment provider.')
+  }
+  const { rows } = await pool.query(
+    `UPDATE users
+     SET is_premium = true,
+         premium_since = COALESCE(premium_since, now())
+     WHERE id = $1
+     RETURNING id, username, is_premium AS "isPremium", premium_since AS "premiumSince", coins, equipped_gif_id AS "equippedGifId"`,
+    [req.user.id],
+  )
+  if (!rows[0]) throw new ApiError(404, 'Your account could not be found')
+  res.json({
+    ok: true,
+    isPremium: true,
+    premiumSince: rows[0].premiumSince,
+    message: 'Premium access is active.',
+  })
+}))
+
+app.post('/api/store/gifs/:gifId/purchase', requireAuth, asyncRoute(async (req, res) => {
+  const gif = APPROVED_GIFS.find(item => item.id === req.params.gifId)
+  if (!gif) throw new ApiError(404, 'That GIF was not found in the shop.')
+  if (gif.premium) throw new ApiError(400, 'Premium GIFs are managed in the Premium section and require premium access.')
+
+  const { rows: userRows } = await pool.query(
+    'SELECT id, coins FROM users WHERE id = $1 FOR UPDATE',
+    [req.user.id],
+  )
+  const user = userRows[0]
+  if (!user) throw new ApiError(404, 'Your account could not be found')
+  if (user.coins < gif.price) throw new ApiError(400, `You need ${gif.price} coins to buy ${gif.name}.`)
+
+  const { rows: existingRows } = await pool.query(
+    'SELECT 1 FROM user_gif_inventory WHERE user_id = $1 AND gif_id = $2',
+    [req.user.id, gif.id],
+  )
+  if (existingRows[0]) {
+    return res.json({ ok: true, owned: true, message: 'You already own this GIF.' })
+  }
+
+  await pool.query('BEGIN')
+  try {
+    await pool.query(
+      'UPDATE users SET coins = coins - $2 WHERE id = $1',
+      [req.user.id, gif.price],
+    )
+    await pool.query(
+      'INSERT INTO user_gif_inventory (id, user_id, gif_id, source, equipped, purchased_at) VALUES ($1, $2, $3, $4, false, now())',
+      [randomUUID(), req.user.id, gif.id, 'shop', false],
+    )
+    await pool.query(
+      'INSERT INTO coin_transactions (id, user_id, direction, amount, reason, metadata) VALUES ($1, $2, $3, $4, $5, $6)',
+      [randomUUID(), req.user.id, 'debit', gif.price, 'gif_purchase', JSON.stringify({ gifId: gif.id, gifName: gif.name })],
+    )
+    await pool.query('COMMIT')
+    const { rows: refreshed } = await pool.query(
+      'SELECT coins, equipped_gif_id AS "equippedGifId" FROM users WHERE id = $1',
+      [req.user.id],
+    )
+    res.status(201).json({ ok: true, owned: true, coins: refreshed[0]?.coins ?? user.coins - gif.price, message: `${gif.name} is now in your collection.` })
+  } catch (error) {
+    await pool.query('ROLLBACK')
+    throw error
+  }
+}))
+
+app.post('/api/store/gifs/:gifId/equip', requireAuth, asyncRoute(async (req, res) => {
+  const gif = APPROVED_GIFS.find(item => item.id === req.params.gifId)
+  if (!gif) throw new ApiError(404, 'That GIF was not found in the shop.')
+
+  const { rows: ownershipRows } = await pool.query(
+    'SELECT 1 FROM user_gif_inventory WHERE user_id = $1 AND gif_id = $2',
+    [req.user.id, gif.id],
+  )
+  if (!ownershipRows[0]) throw new ApiError(403, `You do not own ${gif.name}.`)
+  if (gif.premium) {
+    const { rows: premiumRows } = await pool.query(
+      'SELECT is_premium AS "isPremium" FROM users WHERE id = $1',
+      [req.user.id],
+    )
+    if (!premiumRows[0]?.isPremium) throw new ApiError(403, 'Premium access is required to use that GIF.')
+  }
+
+  const { rows } = await pool.query(
+    `UPDATE users
+     SET equipped_gif_id = $2
+     WHERE id = $1
+     RETURNING equipped_gif_id AS "equippedGifId"`,
+    [req.user.id, gif.id],
+  )
+  await pool.query(
+    `UPDATE user_gif_inventory
+     SET equipped = (gif_id = $2)
+     WHERE user_id = $1`,
+    [req.user.id, gif.id],
+  )
+  res.json({ ok: true, equippedGifId: rows[0]?.equippedGifId || gif.id })
+}))
+
+app.post('/api/store/gifs/:gifId/unequip', requireAuth, asyncRoute(async (req, res) => {
+  const gif = APPROVED_GIFS.find(item => item.id === req.params.gifId)
+  if (!gif) throw new ApiError(404, 'That GIF was not found in the shop.')
+
+  const { rows } = await pool.query(
+    `UPDATE users
+     SET equipped_gif_id = NULL
+     WHERE id = $1 AND equipped_gif_id = $2
+     RETURNING equipped_gif_id AS "equippedGifId"`,
+    [req.user.id, gif.id],
+  )
+  await pool.query(
+    `UPDATE user_gif_inventory
+     SET equipped = false
+     WHERE user_id = $1 AND gif_id = $2`,
+    [req.user.id, gif.id],
+  )
+  res.json({ ok: true, equippedGifId: rows[0]?.equippedGifId || null })
 }))
 
 app.get('/api/users/search', requireAuth, asyncRoute(async (req, res) => {
@@ -730,12 +920,59 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('roomUpdate', { players: room.players, names: room.names })
   })
 
-  socket.on('quickReaction', ({ roomId, reaction } = {}) => {
+  socket.on('quickReaction', ({ roomId, reaction, gif } = {}) => {
     const room = rooms.get(roomId)
-    if (!room || !room.players.includes(socket.id) || !QUICK_REACTIONS.has(reaction)) return
+    if (!room || !room.players.includes(socket.id)) return
+    if (gif && !GIF_REACTIONS.has(gif)) return
+    if (!gif && !QUICK_REACTIONS.has(reaction)) return
     if (Date.now() - (socket.data.lastReactionAt || 0) < 800) return
     socket.data.lastReactionAt = Date.now()
-    socket.to(roomId).emit('opponentReaction', { reaction })
+    const payload = gif ? { gif, senderName: user.username, from: socket.id, kind: 'gif' } : { reaction, senderName: user.username, from: socket.id, kind: 'emoji' }
+    socket.to(roomId).emit('opponentReaction', payload)
+  })
+
+  socket.on('gifReaction', async ({ roomId, gifId } = {}, acknowledge = () => {}) => {
+    const room = rooms.get(roomId)
+    if (!room || !room.players.includes(socket.id)) {
+      acknowledge({ ok: false, message: 'You must be in the active room to send a GIF.' })
+      return
+    }
+    const gif = APPROVED_GIFS.find(item => item.id === gifId)
+    if (!gif) {
+      acknowledge({ ok: false, message: 'That GIF is not allowed in this room.' })
+      return
+    }
+    const { rows: accessRows } = await pool.query(
+      `SELECT u.is_premium AS "isPremium", i.gif_id AS "ownedGifId"
+       FROM users u
+       LEFT JOIN user_gif_inventory i ON i.user_id = u.id AND i.gif_id = $2
+       WHERE u.id = $1`,
+      [user.id, gif.id],
+    )
+    const account = accessRows[0]
+    if (gif.premium && !(account?.isPremium)) {
+      acknowledge({ ok: false, message: 'Premium access is required to use that GIF.' })
+      return
+    }
+    if (!gif.premium && !account?.ownedGifId) {
+      acknowledge({ ok: false, message: 'You do not own that GIF yet.' })
+      return
+    }
+    if (Date.now() - (socket.data.lastReactionAt || 0) < 800) {
+      acknowledge({ ok: false, message: 'Please wait a moment before sending another reaction.' })
+      return
+    }
+    socket.data.lastReactionAt = Date.now()
+    const payload = {
+      from: socket.id,
+      senderName: user.username,
+      gifId: gif.id,
+      gifUrl: gif.imageUrl,
+      kind: 'gif',
+      premium: gif.premium,
+    }
+    io.to(roomId).emit('opponentReaction', payload)
+    acknowledge({ ok: true, gifId: gif.id, gifUrl: gif.imageUrl })
   })
 
   socket.on('playerChoice', ({ roomId, choice } = {}) => {
@@ -743,10 +980,11 @@ io.on('connection', (socket) => {
     if (!room || !room.players.includes(socket.id) || !CHOICES.has(choice) || room.choices[socket.id]) return
     room.choices[socket.id] = choice
     const otherId = room.players.find(id => id !== socket.id)
-    const duration = 8000
+    const duration = MOVE_TIMER_MS
     if (otherId) {
+      const deadline = Date.now() + duration
       io.to(roomId).emit('opponentMadeChoice', socket.id)
-      io.to(roomId).emit('startCountdown', { by: socket.id, duration })
+      io.to(roomId).emit('startCountdown', { by: socket.id, duration, deadline })
       clearRoomTimer(room)
       room.timeoutId = setTimeout(() => {
         if (!room.choices[otherId] && room.choices[socket.id]) {

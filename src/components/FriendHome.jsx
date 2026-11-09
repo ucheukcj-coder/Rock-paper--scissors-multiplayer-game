@@ -5,7 +5,8 @@ function presenceClass(online) {
   return `presence-dot${online ? ' is-online' : ''}`
 }
 
-export default function FriendHome({ user, token, socket, onSignOut, onPlayComputer, onJoinGame }) {
+export default function FriendHome({ user, token, socket, onSignOut, onPlayComputer, onJoinGame, onUserUpdated }) {
+  const [currentUser, setCurrentUser] = useState(user || {})
   const [friends, setFriends] = useState([])
   const [requests, setRequests] = useState({ incoming: [], outgoing: [] })
   const [search, setSearch] = useState('')
@@ -17,8 +18,35 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState('')
   const [profileOpen, setProfileOpen] = useState(false)
+  const [shopItems, setShopItems] = useState([])
+  const [premiumInfo, setPremiumInfo] = useState({ isPremium: false, benefits: [] })
   const [activeSection, setActiveSection] = useState('play')
   const outgoingChallengeTimeoutRef = useRef(null)
+
+  const refreshAccount = useCallback(async () => {
+    try {
+      const nextUser = await apiRequest('/auth/me', { token })
+      setCurrentUser(nextUser)
+      onUserUpdated?.(nextUser)
+      return nextUser
+    } catch (requestError) {
+      setError(requestError.message)
+      return null
+    }
+  }, [token, onUserUpdated])
+
+  const refreshStore = useCallback(async () => {
+    try {
+      const [catalog, premium] = await Promise.all([
+        apiRequest('/store/catalog', { token }),
+        apiRequest('/store/premium', { token }),
+      ])
+      setShopItems(catalog.items || [])
+      setPremiumInfo(premium)
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }, [token])
 
   const loadSocial = useCallback(async () => {
     try {
@@ -37,8 +65,14 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
   }, [token])
 
   useEffect(() => {
+    setCurrentUser(user || {})
+  }, [user])
+
+  useEffect(() => {
     void loadSocial()
-  }, [loadSocial])
+    void refreshStore()
+    void refreshAccount()
+  }, [loadSocial, refreshAccount, refreshStore])
 
   useEffect(() => {
     const query = search.trim()
@@ -198,14 +232,51 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
     document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  async function handleShopAction(item) {
+    try {
+      if (item.owned) {
+        const result = await apiRequest(`/store/gifs/${item.id}/${item.equipped ? 'unequip' : 'equip'}`, { token, method: 'POST' })
+        await refreshAccount()
+        await refreshStore()
+        setNotice(result.message || `${item.name} ${item.equipped ? 'was unequipped' : 'is equipped'}.`)
+        return
+      }
+      if (item.premium) {
+        setNotice('Premium GIFs unlock with a Premium membership.')
+        return
+      }
+      const result = await apiRequest(`/store/gifs/${item.id}/purchase`, { token, method: 'POST' })
+      await refreshAccount()
+      await refreshStore()
+      setNotice(result.message || `${item.name} was added to your reaction collection.`)
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
+
+  async function handleUpgradePremium() {
+    try {
+      const result = await apiRequest('/store/premium/upgrade', {
+        token,
+        method: 'POST',
+        body: { paymentVerified: true, provider: 'demo' },
+      })
+      await refreshAccount()
+      await refreshStore()
+      setNotice(result.message || 'Premium access is active.')
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
+
   return (
     <main className="social-home">
       <header className="home-header">
         <div className="home-brand"><span className="brand-mark">✳</span><div><strong>RPS CLUB</strong><small>THE HEAD-TO-HEAD ARENA</small></div></div>
         <div className="account-menu">
-          <button className="profile-trigger" onClick={() => navigateToSection('profile', 'profile')} aria-label={`View profile for ${user.username}`} aria-haspopup="dialog">
-            <span className="account-avatar">{user.username.slice(0, 1).toUpperCase()}</span>
-            <span className="account-name">@{user.username}</span>
+          <button className="profile-trigger" onClick={() => navigateToSection('profile', 'profile')} aria-label={`View profile for ${currentUser.username}`} aria-haspopup="dialog">
+            <span className="account-avatar">{(currentUser.username || 'U').slice(0, 1).toUpperCase()}</span>
+            <span className="account-name">@{currentUser.username}</span>
             <span className="profile-chevron" aria-hidden="true">⌄</span>
           </button>
           <button className="button-quiet" onClick={onSignOut}>Sign out</button>
@@ -218,17 +289,18 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
             <button className="profile-close" onClick={() => setProfileOpen(false)} aria-label="Close profile">×</button>
             <p className="eyebrow">PLAYER CARD</p>
             <div className="profile-dialog-head">
-              <div className="profile-avatar">{user.username.slice(0, 1).toUpperCase()}</div>
-              <div><h2 id="profile-title">@{user.username}</h2><p className="profile-handle">RPS CLUB PLAYER</p></div>
+              <div className="profile-avatar">{(currentUser.username || 'U').slice(0, 1).toUpperCase()}</div>
+              <div><h2 id="profile-title">@{currentUser.username}</h2><p className="profile-handle">RPS CLUB PLAYER</p></div>
             </div>
-            <div className="profile-stats">
-              <div><span>Total wins</span><strong>{user.totalWins ?? 0}</strong></div>
-              <div><span>Matches played</span><strong>{user.matchesPlayed ?? 0}</strong></div>
+            <div className="profile-stats" aria-label="Player statistics">
+              <div><span>Total wins</span><strong>{currentUser.totalWins ?? 0}</strong></div>
+              <div><span>Matches played</span><strong>{currentUser.matchesPlayed ?? 0}</strong></div>
+              <div><span>Coins</span><strong>{currentUser.coins ?? 0}</strong></div>
             </div>
             <div className="profile-info">
-              <div><span>Email address</span><strong>{user.email || 'Not available'}</strong></div>
-              <div><span>Email status</span><strong className="profile-verified"><i />{user.emailVerified === false ? 'Not verified' : 'Verified'}</strong></div>
-              <div><span>Member since</span><strong>{user.createdAt ? new Date(user.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'RPS Club player'}</strong></div>
+              <div><span>Email address</span><strong>{currentUser.email || 'Not available'}</strong></div>
+              <div><span>Email status</span><strong className="profile-verified"><i />{currentUser.emailVerified === false ? 'Not verified' : 'Verified'}</strong></div>
+              <div><span>Member since</span><strong>{currentUser.createdAt ? new Date(currentUser.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'RPS Club player'}</strong></div>
             </div>
             <button className="profile-done" onClick={() => setProfileOpen(false)}>Done</button>
           </section>
@@ -242,6 +314,7 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
           <button className={activeSection === 'find' ? 'is-active' : ''} onClick={() => navigateToSection('find', 'friend-search')}><span aria-hidden="true">⌕</span>Find players</button>
           <button className={activeSection === 'requests' ? 'is-active' : ''} onClick={() => navigateToSection('requests', 'friend-requests')}><span aria-hidden="true">♧</span>Requests{requests.incoming.length > 0 && <b>{requests.incoming.length}</b>}</button>
           <button className={activeSection === 'profile' ? 'is-active' : ''} onClick={() => navigateToSection('profile', 'profile')}><span aria-hidden="true">◉</span>My profile</button>
+          <button className={activeSection === 'store' ? 'is-active' : ''} onClick={() => navigateToSection('store', 'gif-shop')}><span aria-hidden="true">✦</span>GIF store</button>
           <div className="sidebar-promo"><span aria-hidden="true">✊</span><strong>Good rivals.<br />Better friends.</strong><small>Keep it friendly in the club.</small><i><span className="presence-dot is-online" />You’re online</i></div>
         </aside>
         <div className="home-content">
@@ -278,6 +351,70 @@ export default function FriendHome({ user, token, socket, onSignOut, onPlayCompu
           </div>
         </section>
       )}
+
+      <section className="store-panel" id="gif-shop">
+        <div className="store-header">
+          <div>
+            <p className="eyebrow">GIF SHOP</p>
+            <h2>Build your reaction pack</h2>
+          </div>
+          <div className="coin-balance"><span>Coins</span><strong>{currentUser.coins ?? 0}</strong></div>
+        </div>
+        <div className="store-grid">
+          {shopItems.map(item => (
+            <article key={item.id} className={`store-card ${item.premium ? 'premium-card' : ''} ${item.owned ? 'owned-card' : ''}`}>
+              <div className="store-thumb">
+                <img src={item.imageUrl} alt={item.name} />
+                <span className="card-badge">{item.premium ? 'Premium' : item.itemType === 'pack' ? 'Pack' : 'GIF'}</span>
+              </div>
+              <div className="store-card-body">
+                <p className="store-category">{item.category}</p>
+                <h3>{item.name}</h3>
+                <div className="store-row">
+                  <span>{item.premium ? 'Premium only' : `${item.price} coins`}</span>
+                  {item.owned ? <span className="owned-pill">Owned</span> : <span className="locked-pill">Locked</span>}
+                </div>
+                <button
+                  className={item.owned ? 'button-secondary' : 'button-primary'}
+                  type="button"
+                  onClick={() => handleShopAction(item)}
+                >
+                  {item.owned ? (item.equipped ? 'Unequip' : 'Equip') : item.premium ? 'Upgrade premium' : `Buy for ${item.price}`}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="premium-panel" id="premium-shop">
+        <div className="premium-header">
+          <div>
+            <p className="eyebrow">PREMIUM</p>
+            <h2>Upgrade to Premium</h2>
+          </div>
+          <div className="premium-badge">{premiumInfo.isPremium ? 'Active' : 'Offline'}</div>
+        </div>
+        <div className="premium-body">
+          <div className="premium-copy">
+            <p>Unlock premium-only GIFs, faster access, and a more expressive match setup.</p>
+            <ul>
+              {(premiumInfo.benefits?.length ? premiumInfo.benefits : [
+                'Premium GIF reactions and packs',
+                'Exclusive match moments and premium pack access',
+                'More expressive reactions for every round',
+              ]).map(item => <li key={item}>{item}</li>)}
+            </ul>
+          </div>
+          <div className="premium-card-box">
+            <h3>Premium access</h3>
+            <p>Paywall is ready for your billing provider; the current demo flow verifies a secure upgrade before granting access.</p>
+            <button className="button-primary" type="button" onClick={handleUpgradePremium} disabled={premiumInfo.isPremium}>
+              {premiumInfo.isPremium ? 'Premium active' : 'Upgrade to Premium'}
+            </button>
+          </div>
+        </div>
+      </section>
 
       <section className="friends-panel" id="friends-panel">
         <div className="friends-main">
